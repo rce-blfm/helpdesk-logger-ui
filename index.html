@@ -3314,20 +3314,43 @@ async function init() {
     initGoogleSignIn();
 }
 
+var gisRetryCount = 0;
+var GIS_MAX_RETRIES = 25; // 25 x 200ms = 5 seconds
+
 function initGoogleSignIn() {
-    // Wait for GIS library to load
+    // Check if Client ID is still the placeholder
+    if (!GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID === 'REPLACE_WITH_YOUR_CLIENT_ID.apps.googleusercontent.com') {
+        console.error('GOOGLE_CLIENT_ID is not configured. Please replace the placeholder with your actual Client ID.');
+        showLoginError('Google Sign-In is not configured. Please set the Client ID in the app code.');
+        return;
+    }
+
+    // Wait for GIS library to load (with timeout)
     if (typeof google === 'undefined' || !google.accounts) {
+        gisRetryCount++;
+        if (gisRetryCount > GIS_MAX_RETRIES) {
+            console.error('Google Identity Services library failed to load after ' + (GIS_MAX_RETRIES * 200) + 'ms');
+            showLoginError('Could not load Google Sign-In. Check your internet connection and try refreshing the page.');
+            return;
+        }
         setTimeout(initGoogleSignIn, 200);
         return;
     }
-    google.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
-        callback: handleGoogleSignIn
-    });
-    google.accounts.id.renderButton(
-        document.getElementById('googleSignInButton'),
-        { theme: 'outline', size: 'large', shape: 'rectangular', text: 'signin_with', width: 300 }
-    );
+
+    try {
+        google.accounts.id.initialize({
+            client_id: GOOGLE_CLIENT_ID,
+            callback: handleGoogleSignIn
+        });
+        google.accounts.id.renderButton(
+            document.getElementById('googleSignInButton'),
+            { theme: 'outline', size: 'large', shape: 'rectangular', text: 'signin_with', width: 300 }
+        );
+        console.log('Google Sign-In initialized successfully');
+    } catch (err) {
+        console.error('Google Sign-In initialization error:', err);
+        showLoginError('Google Sign-In failed to initialize. Please check the Client ID and try again.');
+    }
 }
 
 function handleGoogleSignIn(response) {
@@ -4176,6 +4199,7 @@ function logout() {
         if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
             google.accounts.id.disableAutoSelect();
         }
+        gisRetryCount = 0;
 
         // Reset login screen UI
         var signInBtn = document.getElementById('googleSignInButton');
