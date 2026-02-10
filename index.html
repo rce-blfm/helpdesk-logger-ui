@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="no-referrer">
     <title>Helpdesk Call Logger</title>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -3432,7 +3433,9 @@ async function apiGet(action, params = {}) {
 
     const response = await fetch(url.toString(), {
         method: 'GET',
-        redirect: 'follow'
+        redirect: 'follow',
+        referrerPolicy: 'no-referrer',
+        cache: 'no-store'
     });
     var result = await response.json();
     if (result && result.error === 'Token expired') {
@@ -3453,7 +3456,9 @@ async function apiPost(action, data, params = {}) {
 
     const response = await fetch(url.toString(), {
         method: 'GET',
-        redirect: 'follow'
+        redirect: 'follow',
+        referrerPolicy: 'no-referrer',
+        cache: 'no-store'
     });
     var result = await response.json();
     if (result && result.error === 'Token expired') {
@@ -5859,7 +5864,7 @@ async function checkMissingMonthsForAdminPeriod() {
 
     try {
         var dateRange = getAdminDateRange();
-        var response = await fetch(API_URL + '?token=' + encodeURIComponent(googleCredential) + '&action=checkMissingMonths&startDate=' + dateRange.startDate + '&endDate=' + dateRange.endDate);
+        var response = await fetch(API_URL + '?token=' + encodeURIComponent(googleCredential) + '&action=checkMissingMonths&startDate=' + dateRange.startDate + '&endDate=' + dateRange.endDate, { referrerPolicy: 'no-referrer', cache: 'no-store' });
         var result = await response.json();
 
         if (result.success && result.missingMonths && result.missingMonths.length > 0) {
@@ -7561,7 +7566,7 @@ async function deleteCase(jobId, deleteAll) {
     showLoadingOverlay('Deleting...');
     try {
         const url = `${API_URL}?token=${encodeURIComponent(googleCredential)}&action=deleteCase&worksheet=${encodeURIComponent(currentUser.worksheet)}&jobId=${encodeURIComponent(jobId)}&deleteAll=${deleteAll}`;
-        const response = await fetch(url);
+        const response = await fetch(url, { referrerPolicy: 'no-referrer', cache: 'no-store' });
         const result = await response.json();
 
         if (result.success) {
