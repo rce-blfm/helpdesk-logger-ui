@@ -3444,16 +3444,19 @@ async function handleGoogleSignIn(response) {
             return;
         }
 
-        if (!user.worksheet) {
-            googleCredential = null;
-            showLoginError('No worksheet assigned to your account. Please contact the administrator.');
-            return;
-        }
+        // Only check worksheet if user is helpdesk (non-helpdesk admin doesn't need a worksheet)
+        if (user.isHelpdesk === true || user.isHelpdesk === 'TRUE') {
+            if (!user.worksheet) {
+                googleCredential = null;
+                showLoginError('No worksheet assigned to your account. Please contact the administrator.');
+                return;
+            }
 
-        if (!WORKSHEETS.includes(user.worksheet)) {
-            googleCredential = null;
-            showLoginError('Worksheet "' + user.worksheet + '" not found. Please contact the administrator.');
-            return;
+            if (!WORKSHEETS.includes(user.worksheet)) {
+                googleCredential = null;
+                showLoginError('Worksheet "' + user.worksheet + '" not found. Please contact the administrator.');
+                return;
+            }
         }
 
         // Authentication successful - login as the user
@@ -3931,19 +3934,21 @@ async function loginAs(email) {
         return;
     }
 
-    // Check worksheet mapping
-    if (!user.worksheet) {
-        showToast('No worksheet assigned. Please contact administrator.', 'error');
-        return;
+    // Check worksheet mapping only for helpdesk users
+    const userIsHelpdesk = user.isHelpdesk === true || user.isHelpdesk === 'TRUE';
+    if (userIsHelpdesk) {
+        if (!user.worksheet) {
+            showToast('No worksheet assigned. Please contact administrator.', 'error');
+            return;
+        }
+
+        if (!WORKSHEETS.includes(user.worksheet)) {
+            showToast(`Worksheet "${user.worksheet}" not found. Please contact administrator.`, 'error');
+            return;
+        }
     }
 
-    // Check if worksheet exists
-    if (!WORKSHEETS.includes(user.worksheet)) {
-        showToast(`Worksheet "${user.worksheet}" not found. Please contact administrator.`, 'error');
-        return;
-    }
-
-    currentUser = { name: user.name, initials: user.initials, email: user.email, role: user.role, worksheet: user.worksheet };
+    currentUser = { name: user.name, initials: user.initials, email: user.email, role: user.role, worksheet: user.worksheet || '' };
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('appContainer').classList.add('show');
     document.getElementById('userAvatar').textContent = user.initials;
