@@ -90,6 +90,42 @@
         .login-title { font-size: 1.5rem; font-weight: 700; margin-bottom: 8px; }
         .login-subtitle { color: var(--text-muted); margin-bottom: 32px; }
 
+        /* Session Expired Overlay */
+        .session-expired-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 10000;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(4px);
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .session-expired-overlay.show { display: flex; }
+        .session-expired-card {
+            background: var(--bg-secondary);
+            border-radius: var(--radius-lg);
+            padding: 40px 32px;
+            max-width: 380px;
+            width: 100%;
+            box-shadow: var(--shadow-lg);
+            text-align: center;
+            animation: fadeInUp 0.3s ease;
+        }
+        .session-expired-icon {
+            width: 64px; height: 64px;
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 20px;
+            font-size: 1.6rem; color: white;
+        }
+        .session-expired-title { font-size: 1.3rem; font-weight: 700; margin-bottom: 8px; color: var(--text-primary); }
+        .session-expired-message { color: var(--text-muted); font-size: 0.9rem; line-height: 1.5; margin-bottom: 24px; }
+        .session-expired-btn { width: 100%; padding: 14px; font-size: 1rem; gap: 8px; display: flex; align-items: center; justify-content: center; }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
         .google-btn {
             width: 100%;
             padding: 14px 24px;
@@ -2658,6 +2694,16 @@
         </div>
     </div>
 
+    <!-- Session Expired Overlay -->
+    <div class="session-expired-overlay" id="sessionExpiredOverlay">
+        <div class="session-expired-card">
+            <div class="session-expired-icon"><i class="fas fa-clock"></i></div>
+            <h2 class="session-expired-title">Session Expired</h2>
+            <p class="session-expired-message">Your session has timed out for security reasons. Please sign in again to continue.</p>
+            <button class="btn btn-primary session-expired-btn" onclick="handleReLogin()"><i class="fas fa-sign-in-alt"></i> Sign In Again</button>
+        </div>
+    </div>
+
     <!-- Main App -->
     <div class="app-container" id="appContainer">
         <header class="header">
@@ -2817,7 +2863,7 @@
                                     </div>
                                 </div>
                                 <div class="form-section-divider"><span>Contact Information</span></div>
-                                <div class="form-group"><label class="form-label">Contact Person</label><input type="text" class="form-input" id="contactPerson" placeholder="e.g. Mr. John Cheung" onblur="formatContactPerson(this)"></div>
+                                <div class="form-group"><label class="form-label">Contact Person</label><input type="text" class="form-input" id="contactPerson" maxlength="50" placeholder="e.g. Mr. John Cheung" onblur="formatContactPerson(this)"></div>
                                 <div class="form-group"><label class="form-label">Tel No. <span class="required">*</span></label><input type="tel" class="form-input" id="telNo" placeholder="e.g. 9876-5432" maxlength="9" required onblur="formatTelNo(this)" oninput="formatTelNoInput(this)"></div>
                                 <div class="form-group"><label class="form-label">Agent Code</label><input type="text" class="form-input uppercase-input" id="agentCode" placeholder="e.g. Z0S123" maxlength="6"></div>
                                 <div class="form-group"><label class="form-label">Location (if on-site)</label><select class="form-select" id="location"><option value="">Not required</option><option value="MU Tower">MU Tower</option><option value="Harbour Front">Harbour Front</option><option value="Gateway">Gateway</option><option value="Other">Other</option></select></div>
@@ -2835,10 +2881,10 @@
                                 <div class="form-group"><label class="form-label">Category <span class="required">*</span></label><input type="hidden" id="category" required><div class="custom-dropdown" id="categoryDropdown"><div class="custom-dropdown-selected placeholder" tabindex="0" onclick="toggleCustomDropdown('category')" onkeydown="handleDropdownKey(event, 'category')">Select...</div><div class="custom-dropdown-options"></div></div></div>
                                 <div class="form-group"><label class="form-label">Subcategory <span class="required">*</span></label><input type="hidden" id="subcategory" required><div class="custom-dropdown" id="subcategoryDropdown"><div class="custom-dropdown-selected placeholder" tabindex="0" onclick="toggleCustomDropdown('subcategory')" onkeydown="handleDropdownKey(event, 'subcategory')">Select...</div><div class="custom-dropdown-options"></div></div><span class="others-warning" id="subcategoryOthersWarning" style="display:none;"><i class="fas fa-exclamation-triangle"></i> "Others" is not recommended. Please select a more specific option if possible.</span></div>
                                 <div class="form-group"><label class="form-label">Subject <span class="required">*</span></label><input type="hidden" id="subject" required><div class="custom-dropdown" id="subjectDropdown"><div class="custom-dropdown-selected placeholder" tabindex="0" onclick="toggleCustomDropdown('subject')" onkeydown="handleDropdownKey(event, 'subject')">Select...</div><div class="custom-dropdown-options"></div></div><span class="others-warning" id="subjectOthersWarning" style="display:none;"><i class="fas fa-exclamation-triangle"></i> "Others" is not recommended. Please select a more specific option if possible.</span></div>
-                                <div class="form-group full-width"><label class="form-label">Symptom / Description <span class="required">*</span></label><div class="autocomplete-wrapper"><textarea class="form-textarea" id="symptom" placeholder="Describe the issue in detail..." required oninput="showAutocomplete('symptom', this.value)" onkeydown="handleAutocompleteKey(event, 'symptom')" onfocus="showAutocomplete('symptom', this.value)"></textarea><div class="autocomplete-list" id="symptom-autocomplete"></div></div><div class="autocomplete-hint"><i class="fas fa-lightbulb"></i> Start typing to see suggestions from previous cases</div></div>
+                                <div class="form-group full-width"><label class="form-label">Symptom / Description <span class="required">*</span></label><div class="autocomplete-wrapper"><textarea class="form-textarea" id="symptom" maxlength="1000" placeholder="Describe the issue in detail..." required oninput="showAutocomplete('symptom', this.value)" onkeydown="handleAutocompleteKey(event, 'symptom')" onfocus="showAutocomplete('symptom', this.value)"></textarea><div class="autocomplete-list" id="symptom-autocomplete"></div></div><div class="autocomplete-hint"><i class="fas fa-lightbulb"></i> Start typing to see suggestions from previous cases</div></div>
                                 <div class="form-section-divider"><span>Resolution</span></div>
-                                <div class="form-group two-third"><label class="form-label">Action Taken</label><div class="autocomplete-wrapper"><textarea class="form-textarea" id="actionDetail" placeholder="What actions were taken..." oninput="showAutocomplete('actionDetail', this.value)" onkeydown="handleAutocompleteKey(event, 'actionDetail')" onfocus="showAutocomplete('actionDetail', this.value)"></textarea><div class="autocomplete-list" id="actionDetail-autocomplete"></div></div><div class="autocomplete-hint"><i class="fas fa-lightbulb"></i> Start typing to see suggestions</div></div>
-                                <div class="form-group" id="escalateField"><label class="form-label">Escalate Ticket No.</label><input type="text" class="form-input uppercase-input" id="escalateTicket" placeholder="Incident / Service Now Ticket No."></div>
+                                <div class="form-group two-third"><label class="form-label">Action Taken</label><div class="autocomplete-wrapper"><textarea class="form-textarea" id="actionDetail" maxlength="1000" placeholder="What actions were taken..." oninput="showAutocomplete('actionDetail', this.value)" onkeydown="handleAutocompleteKey(event, 'actionDetail')" onfocus="showAutocomplete('actionDetail', this.value)"></textarea><div class="autocomplete-list" id="actionDetail-autocomplete"></div></div><div class="autocomplete-hint"><i class="fas fa-lightbulb"></i> Start typing to see suggestions</div></div>
+                                <div class="form-group" id="escalateField"><label class="form-label">Escalate Ticket No.</label><input type="text" class="form-input uppercase-input" id="escalateTicket" maxlength="15" placeholder="Incident / Service Now Ticket No."></div>
                                 <div class="form-group" id="actionResultGroup"><label class="form-label">Case Status <span class="required">*</span></label><input type="hidden" id="actionResult" required><div class="custom-dropdown dropup" id="actionResultDropdown"><div class="custom-dropdown-selected placeholder" tabindex="0" onclick="toggleCustomDropdown('actionResult')" onkeydown="handleDropdownKey(event, 'actionResult')">Select...</div><div class="custom-dropdown-options"></div></div></div>
                             </div>
                         </form>
@@ -2847,7 +2893,7 @@
                 <!-- Fixed button footer for form -->
                 <div class="form-buttons-fixed" id="formButtonGroup">
                     <button type="button" class="btn btn-secondary" id="clearCancelBtn" onclick="handleClearCancel()"><i class="fas fa-times" id="clearCancelIcon"></i> <span id="clearCancelText">Clear</span></button>
-                    <button type="submit" form="caseForm" class="btn btn-primary"><i class="fas fa-save"></i> Save Case</button>
+                    <button type="submit" form="caseForm" class="btn btn-primary" id="btnSaveCase"><i class="fas fa-save"></i> Save Case</button>
                 </div>
             </div>
 
@@ -3024,7 +3070,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" onclick="closeUserModal()">Cancel</button>
-                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save</button>
+                    <button type="submit" class="btn btn-primary" id="btnSaveUser"><i class="fas fa-save"></i> Save</button>
                 </div>
                 <input type="hidden" id="editingUserEmail" value="">
             </form>
@@ -3469,9 +3515,16 @@ async function apiPost(action, data, params = {}) {
 }
 
 function handleSessionExpired() {
+    // Prevent showing multiple times
+    if (document.getElementById('sessionExpiredOverlay').classList.contains('show')) return;
     googleCredential = null;
-    showToast('Your session has expired. Please sign in again.', 'error');
-    setTimeout(function() { logout(); }, 2000);
+    hideLoadingOverlay();
+    document.getElementById('sessionExpiredOverlay').classList.add('show');
+}
+
+function handleReLogin() {
+    document.getElementById('sessionExpiredOverlay').classList.remove('show');
+    performLogoutReset();
 }
 
 function showLoadingOverlay(message) {
@@ -4094,161 +4147,163 @@ function deleteCaseFromMemory(jobId, deleteAll) {
         buildAdminSummaryFromCases();
     }
 }
-function logout() {
-    showConfirm('Logout', 'Are you sure you want to logout?', function() {
-        // Reset all state variables
-        currentUser = null;
-        currentCaseId = null;
-        isAdmin = false;
+function performLogoutReset() {
+    // Reset all state variables
+    currentUser = null;
+    currentCaseId = null;
+    isAdmin = false;
 
-        // Reset cases data
-        cases = [];
-        adminCases = [];
-        filteredCases = [];
-        adminFilteredCases = [];
-        helpdeskUsers = [];
+    // Reset cases data
+    cases = [];
+    adminCases = [];
+    filteredCases = [];
+    adminFilteredCases = [];
+    helpdeskUsers = [];
 
-        // Reset cache metadata
-        adminCachedStartDate = null;
-        adminCachedEndDate = null;
-        adminCacheTimestamp = null;
-        adminCachePeriod = null;
-        updateDataLoadedRange();
+    // Reset cache metadata
+    adminCachedStartDate = null;
+    adminCachedEndDate = null;
+    adminCacheTimestamp = null;
+    adminCachePeriod = null;
+    updateDataLoadedRange();
 
-        // Reset custom date ranges
-        customDateRange = null;
-        adminCustomDateRange = null;
+    // Reset custom date ranges
+    customDateRange = null;
+    adminCustomDateRange = null;
 
-        // Reset filters
-        selectedColleague = 'all';
-        selectedChannels = ['Agency', 'Broker', 'Banca'];
-        activeFilters = { stat: null };
+    // Reset filters
+    selectedColleague = 'all';
+    selectedChannels = ['Agency', 'Broker', 'Banca'];
+    activeFilters = { stat: null };
 
-        // Reset sorting
-        sortColumn = 'date';
-        sortDirection = 'desc';
+    // Reset sorting
+    sortColumn = 'date';
+    sortDirection = 'desc';
 
-        // Reset pagination
-        currentPage = 1;
-        adminCurrentPage = 1;
-        pageSize = 10;
-        adminPageSize = 20;
+    // Reset pagination
+    currentPage = 1;
+    adminCurrentPage = 1;
+    pageSize = 10;
+    adminPageSize = 20;
 
-        // Reset other state
-        dataChanged = true;
-        dashboardInitialized = false;
-        isEditMode = false;
-        editingJobId = null;
-        originalFormData = null;
-        adminSummary = {};
+    // Reset other state
+    dataChanged = true;
+    dashboardInitialized = false;
+    isEditMode = false;
+    editingJobId = null;
+    originalFormData = null;
+    adminSummary = {};
 
-        // Reset stat boxes to 0
-        var statTotal = document.getElementById('statTotal');
-        var statPending = document.getElementById('statPending');
-        var statEscalated = document.getElementById('statEscalated');
-        var statResolved = document.getElementById('statResolved');
-        if (statTotal) statTotal.textContent = '0';
-        if (statPending) statPending.textContent = '0';
-        if (statEscalated) statEscalated.textContent = '0';
-        if (statResolved) statResolved.textContent = '0';
+    // Reset stat boxes to 0
+    var statTotal = document.getElementById('statTotal');
+    var statPending = document.getElementById('statPending');
+    var statEscalated = document.getElementById('statEscalated');
+    var statResolved = document.getElementById('statResolved');
+    if (statTotal) statTotal.textContent = '0';
+    if (statPending) statPending.textContent = '0';
+    if (statEscalated) statEscalated.textContent = '0';
+    if (statResolved) statResolved.textContent = '0';
 
-        // Reset Period filter values
-        var dateFilter = document.getElementById('dateFilter');
-        if (dateFilter) dateFilter.value = '30days';
-        var adminPeriodFilter = document.getElementById('adminPeriodFilter');
-        if (adminPeriodFilter) adminPeriodFilter.value = '30days';
+    // Reset Period filter values
+    var dateFilter = document.getElementById('dateFilter');
+    if (dateFilter) dateFilter.value = '30days';
+    var adminPeriodFilter = document.getElementById('adminPeriodFilter');
+    if (adminPeriodFilter) adminPeriodFilter.value = '30days';
 
-        // Reset search inputs
-        var searchInput = document.getElementById('searchInput');
-        if (searchInput) searchInput.value = '';
-        var adminSearchInput = document.getElementById('adminSearchInput');
-        if (adminSearchInput) adminSearchInput.value = '';
+    // Reset search inputs
+    var searchInput = document.getElementById('searchInput');
+    if (searchInput) searchInput.value = '';
+    var adminSearchInput = document.getElementById('adminSearchInput');
+    if (adminSearchInput) adminSearchInput.value = '';
 
-        // Reset period buttons text
-        var periodButtonText = document.getElementById('periodButtonText');
-        if (periodButtonText) periodButtonText.textContent = 'Last 30 Days';
-        var adminPeriodButtonText = document.getElementById('adminPeriodButtonText');
-        if (adminPeriodButtonText) adminPeriodButtonText.textContent = 'Last 30 Days';
+    // Reset period buttons text
+    var periodButtonText = document.getElementById('periodButtonText');
+    if (periodButtonText) periodButtonText.textContent = 'Last 30 Days';
+    var adminPeriodButtonText = document.getElementById('adminPeriodButtonText');
+    if (adminPeriodButtonText) adminPeriodButtonText.textContent = 'Last 30 Days';
 
-        // Reset colleague filter dropdown
-        var dashboardColleagueFilter = document.getElementById('dashboardColleagueFilter');
-        if (dashboardColleagueFilter) {
-            dashboardColleagueFilter.innerHTML = '<option value="all">All Helpdesk<\/option>';
-            dashboardColleagueFilter.value = 'all';
-        }
-        var colleagueFilter = document.getElementById('colleagueFilter');
-        if (colleagueFilter) {
-            colleagueFilter.innerHTML = '<option value="all">All Helpdesk<\/option>';
-            colleagueFilter.value = 'all';
-        }
+    // Reset colleague filter dropdown
+    var dashboardColleagueFilter = document.getElementById('dashboardColleagueFilter');
+    if (dashboardColleagueFilter) {
+        dashboardColleagueFilter.innerHTML = '<option value="all">All Helpdesk<\/option>';
+        dashboardColleagueFilter.value = 'all';
+    }
+    var colleagueFilter = document.getElementById('colleagueFilter');
+    if (colleagueFilter) {
+        colleagueFilter.innerHTML = '<option value="all">All Helpdesk<\/option>';
+        colleagueFilter.value = 'all';
+    }
 
-        // Hide colleague filter container
-        var colleagueFilterContainer = document.getElementById('colleagueFilterContainer');
-        if (colleagueFilterContainer) colleagueFilterContainer.style.display = 'none';
+    // Hide colleague filter container
+    var colleagueFilterContainer = document.getElementById('colleagueFilterContainer');
+    if (colleagueFilterContainer) colleagueFilterContainer.style.display = 'none';
 
-        // Clear case list display
-        var casesList = document.getElementById('casesList');
-        if (casesList) casesList.innerHTML = '';
-        var adminCasesList = document.getElementById('adminCasesList');
-        if (adminCasesList) adminCasesList.innerHTML = '';
+    // Clear case list display
+    var casesList = document.getElementById('casesList');
+    if (casesList) casesList.innerHTML = '';
+    var adminCasesList = document.getElementById('adminCasesList');
+    if (adminCasesList) adminCasesList.innerHTML = '';
 
-        // Reset pagination display
-        var paginationContainer = document.getElementById('paginationContainer');
-        if (paginationContainer) {
-            var pageInfo = paginationContainer.querySelector('.page-info');
-            if (pageInfo) pageInfo.textContent = 'Showing 0-0 of 0';
-        }
+    // Reset pagination display
+    var paginationContainer = document.getElementById('paginationContainer');
+    if (paginationContainer) {
+        var pageInfo = paginationContainer.querySelector('.page-info');
+        if (pageInfo) pageInfo.textContent = 'Showing 0-0 of 0';
+    }
 
-        // Reset page size dropdown
-        var pageSizeSelect = document.getElementById('pageSizeSelect');
-        if (pageSizeSelect) pageSizeSelect.value = '10';
+    // Reset page size dropdown
+    var pageSizeSelect = document.getElementById('pageSizeSelect');
+    if (pageSizeSelect) pageSizeSelect.value = '10';
 
-        // Reset channel toggles to all active
-        document.querySelectorAll('.channel-toggle').forEach(function(btn) {
-            btn.classList.add('active');
-        });
-
-        // Reset stat cards (remove active selection)
-        document.querySelectorAll('.stat-card').forEach(function(c) {
-            c.classList.remove('active');
-        });
-
-        // Reset Team Breakdown table
-        var userSummaryBody = document.getElementById('userSummaryBody');
-        if (userSummaryBody) userSummaryBody.innerHTML = '';
-
-        // Reset admin cache status
-        var adminCacheStatus = document.getElementById('adminCacheStatus');
-        if (adminCacheStatus) adminCacheStatus.style.display = 'none';
-
-        // Hide any open modals/drawers
-        var timelineDrawer = document.getElementById('timelineDrawer');
-        if (timelineDrawer) timelineDrawer.classList.remove('open');
-        var caseDetailModal = document.getElementById('caseDetailModal');
-        if (caseDetailModal) caseDetailModal.classList.remove('show');
-
-        // Revoke Google sign-in session
-        if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
-            google.accounts.id.disableAutoSelect();
-        }
-        googleCredential = null;
-        gisRetryCount = 0;
-
-        // Reset login screen UI
-        var signInBtn = document.getElementById('googleSignInButton');
-        var spinner = document.getElementById('loginSpinner');
-        var statusEl = document.getElementById('loginStatus');
-        if (signInBtn) signInBtn.style.display = 'flex';
-        if (spinner) spinner.style.display = 'none';
-        if (statusEl) statusEl.style.display = 'none';
-
-        // Show login screen
-        document.getElementById('loginScreen').style.display = 'flex';
-        document.getElementById('appContainer').classList.remove('show');
-
-        // Switch to dashboard view
-        showView('dashboard');
+    // Reset channel toggles to all active
+    document.querySelectorAll('.channel-toggle').forEach(function(btn) {
+        btn.classList.add('active');
     });
+
+    // Reset stat cards (remove active selection)
+    document.querySelectorAll('.stat-card').forEach(function(c) {
+        c.classList.remove('active');
+    });
+
+    // Reset Team Breakdown table
+    var userSummaryBody = document.getElementById('userSummaryBody');
+    if (userSummaryBody) userSummaryBody.innerHTML = '';
+
+    // Reset admin cache status
+    var adminCacheStatus = document.getElementById('adminCacheStatus');
+    if (adminCacheStatus) adminCacheStatus.style.display = 'none';
+
+    // Hide any open modals/drawers
+    var timelineDrawer = document.getElementById('timelineDrawer');
+    if (timelineDrawer) timelineDrawer.classList.remove('open');
+    var caseDetailModal = document.getElementById('caseDetailModal');
+    if (caseDetailModal) caseDetailModal.classList.remove('show');
+
+    // Revoke Google sign-in session
+    if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
+        google.accounts.id.disableAutoSelect();
+    }
+    googleCredential = null;
+    gisRetryCount = 0;
+
+    // Reset login screen UI
+    var signInBtn = document.getElementById('googleSignInButton');
+    var spinner = document.getElementById('loginSpinner');
+    var statusEl = document.getElementById('loginStatus');
+    if (signInBtn) signInBtn.style.display = 'flex';
+    if (spinner) spinner.style.display = 'none';
+    if (statusEl) statusEl.style.display = 'none';
+
+    // Show login screen
+    document.getElementById('loginScreen').style.display = 'flex';
+    document.getElementById('appContainer').classList.remove('show');
+
+    // Switch to dashboard view
+    showView('dashboard');
+}
+
+function logout() {
+    showConfirm('Logout', 'Are you sure you want to logout?', performLogoutReset);
 }
 
 function toggleTheme() {
@@ -6852,6 +6907,9 @@ function applyTemplate(name) {
 
 function clearForm() {
     document.getElementById('caseForm').reset(); setCurrentDateTime();
+    // Reset Save button state (in case it was disabled during save)
+    const saveBtn = document.getElementById('btnSaveCase');
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '<i class="fas fa-save"></i> Save Case'; }
     // Reset custom dropdowns
     setCustomDropdownValue('source', '');
     setCustomDropdownValue('caseType', '');
@@ -7049,33 +7107,45 @@ function disableFollowUpFields() { ['channel', 'source', 'contactPerson', 'telNo
 async function saveCase(event) {
     event.preventDefault();
     const form = document.getElementById('caseForm');
+    const saveBtn = document.getElementById('btnSaveCase');
+
+    // Prevent double submit
+    if (saveBtn.disabled) return;
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+
+    function resetSaveBtn() {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = '<i class="fas fa-save"></i> Save Case';
+    }
 
     // Check channel first (custom selector, appears near top of form)
     const channelVal = document.getElementById('channel').value;
-    if (!channelVal) { showToast('Please select a Channel', 'error'); return; }
+    if (!channelVal) { showToast('Please select a Channel', 'error'); resetSaveBtn(); return; }
 
     // Validate custom dropdown fields (hidden inputs don't trigger HTML5 validation)
     const sourceVal = document.getElementById('source').value;
-    if (!sourceVal) { showToast('Please select a Source', 'error'); return; }
+    if (!sourceVal) { showToast('Please select a Source', 'error'); resetSaveBtn(); return; }
 
     const caseTypeVal = document.getElementById('caseType').value;
-    if (!caseTypeVal) { showToast('Please select a Case Type', 'error'); return; }
+    if (!caseTypeVal) { showToast('Please select a Case Type', 'error'); resetSaveBtn(); return; }
 
     const categoryVal = document.getElementById('category').value;
-    if (!categoryVal) { showToast('Please select a Category', 'error'); return; }
+    if (!categoryVal) { showToast('Please select a Category', 'error'); resetSaveBtn(); return; }
 
     const subcategoryVal = document.getElementById('subcategory').value;
-    if (!subcategoryVal) { showToast('Please select a Subcategory', 'error'); return; }
+    if (!subcategoryVal) { showToast('Please select a Subcategory', 'error'); resetSaveBtn(); return; }
 
     const subjectVal = document.getElementById('subject').value;
-    if (!subjectVal) { showToast('Please select a Subject', 'error'); return; }
+    if (!subjectVal) { showToast('Please select a Subject', 'error'); resetSaveBtn(); return; }
 
     const actionResultVal = document.getElementById('actionResult').value;
-    if (!actionResultVal) { showToast('Please select a Case Status', 'error'); return; }
+    if (!actionResultVal) { showToast('Please select a Case Status', 'error'); resetSaveBtn(); return; }
 
     // Check HTML5 form validation for remaining fields
     if (!form.checkValidity()) {
         form.reportValidity();
+        resetSaveBtn();
         return;
     }
     const isNewJob = document.getElementById('isNewJob').value, originalJobId = document.getElementById('originalJobId').value, editingId = document.getElementById('editingCaseId').value;
@@ -7092,6 +7162,7 @@ async function saveCase(event) {
     if (timeToMins(endTime) < timeToMins(startTime)) {
         showToast('End time cannot be before start time', 'error');
         document.getElementById('endTime').focus();
+        resetSaveBtn();
         return;
     }
     const dur = parseInt(document.getElementById('duration').value) || 1;
@@ -7150,6 +7221,7 @@ async function saveCase(event) {
 
         if (!result.success) {
             hideLoadingOverlay();
+            resetSaveBtn();
             showToast(result.error || 'Failed to save case', 'error');
             return;
         }
@@ -7223,6 +7295,7 @@ async function saveCase(event) {
         }
     } catch (error) {
         hideLoadingOverlay();
+        resetSaveBtn();
         console.error('API error saving case:', error);
         showToast('Failed to connect to server', 'error');
     }
@@ -8663,6 +8736,17 @@ function closeUserModal() {
 
 async function saveUser(event) {
     event.preventDefault();
+    const saveBtn = document.getElementById('btnSaveUser');
+
+    // Prevent double submit
+    if (saveBtn.disabled) return;
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+
+    function resetSaveUserBtn() {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = '<i class="fas fa-save"></i> Save';
+    }
 
     const editingEmail = document.getElementById('editingUserEmail').value;
     const name = document.getElementById('userNameInput').value.trim();
@@ -8690,6 +8774,7 @@ async function saveUser(event) {
         hideLoadingOverlay();
 
         if (result.success) {
+            resetSaveUserBtn();
             showToast(editingEmail ? 'User updated successfully!' : 'User added successfully!', 'success');
             // Reload users from API
             await loadUsersFromAPI();
@@ -8697,10 +8782,12 @@ async function saveUser(event) {
             renderAdminUserList();
             renderUserList();
         } else {
+            resetSaveUserBtn();
             showToast(result.error || 'Failed to save user', 'error');
         }
     } catch (error) {
         hideLoadingOverlay();
+        resetSaveUserBtn();
         console.error('API error saving user:', error);
         showToast('Failed to connect to server', 'error');
     }
@@ -8846,6 +8933,8 @@ window.wizardGoNext = wizardGoNext;
 window.wizardGoToStep = wizardGoToStep;
 window.handleGoogleSignIn = handleGoogleSignIn;
 window.handleSessionExpired = handleSessionExpired;
+window.handleReLogin = handleReLogin;
+window.performLogoutReset = performLogoutReset;
 window.initGoogleSignIn = initGoogleSignIn;
 window.showLoginError = showLoginError;
 </script>
