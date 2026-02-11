@@ -7153,10 +7153,20 @@ function highlightAndFocus(fieldId) {
     }
 }
 
+// All mandatory field IDs for clearing highlights
+var ALL_MANDATORY_FIELDS = ['callDate', 'startTime', 'endTime', 'source', 'channel', 'telNo', 'caseType', 'category', 'subcategory', 'subject', 'symptom', 'actionResult'];
+
+function clearAllFieldHighlights() {
+    ALL_MANDATORY_FIELDS.forEach(function(id) { clearFieldHighlight(id); });
+}
+
 // Auto-clear error highlight when user fills a field
 ['symptom', 'actionDetail', 'contactPerson', 'telNo', 'agentCode', 'escalateTicket', 'callDate', 'startTime', 'endTime'].forEach(function(id) {
     var el = document.getElementById(id);
-    if (el) el.addEventListener('input', function() { clearFieldHighlight(id); });
+    if (el) {
+        el.addEventListener('input', function() { clearFieldHighlight(id); });
+        el.addEventListener('change', function() { clearFieldHighlight(id); });
+    }
 });
 
 function enableAllFormFields() { ['channel', 'source', 'contactPerson', 'telNo', 'agentCode', 'location', 'caseType', 'category', 'subcategory', 'subject'].forEach(id => { const el = document.getElementById(id); if (el) el.disabled = false; }); }
@@ -7178,55 +7188,63 @@ async function saveCase(event) {
         saveBtn.innerHTML = '<i class="fas fa-save"></i> Save Case';
     }
 
-    // Check channel first (custom selector, appears near top of form)
-    const channelVal = document.getElementById('channel').value;
-    if (!channelVal) { highlightAndFocus('channel'); showToast('Please select a Channel', 'error'); resetSaveBtn(); return; }
+    // Clear all previous validation highlights before re-checking
+    clearAllFieldHighlights();
 
-    // Validate custom dropdown fields (hidden inputs don't trigger HTML5 validation)
-    const sourceVal = document.getElementById('source').value;
-    if (!sourceVal) { highlightAndFocus('source'); showToast('Please select a Source', 'error'); resetSaveBtn(); return; }
-
-    const caseTypeVal = document.getElementById('caseType').value;
-    if (!caseTypeVal) { highlightAndFocus('caseType'); showToast('Please select a Case Type', 'error'); resetSaveBtn(); return; }
-
-    const categoryVal = document.getElementById('category').value;
-    if (!categoryVal) { highlightAndFocus('category'); showToast('Please select a Category', 'error'); resetSaveBtn(); return; }
-
-    const subcategoryVal = document.getElementById('subcategory').value;
-    if (!subcategoryVal) { highlightAndFocus('subcategory'); showToast('Please select a Subcategory', 'error'); resetSaveBtn(); return; }
-
-    const subjectVal = document.getElementById('subject').value;
-    if (!subjectVal) { highlightAndFocus('subject'); showToast('Please select a Subject', 'error'); resetSaveBtn(); return; }
-
-    const actionResultVal = document.getElementById('actionResult').value;
-    if (!actionResultVal) { highlightAndFocus('actionResult'); showToast('Please select a Case Status', 'error'); resetSaveBtn(); return; }
-
-    // Check HTML5 form validation for remaining fields
-    if (!form.checkValidity()) {
-        // Highlight the first invalid native field
-        var firstInvalid = form.querySelector(':invalid');
-        if (firstInvalid && firstInvalid.id) highlightAndFocus(firstInvalid.id);
-        form.reportValidity();
-        resetSaveBtn();
-        return;
-    }
-    const isNewJob = document.getElementById('isNewJob').value, originalJobId = document.getElementById('originalJobId').value, editingId = document.getElementById('editingCaseId').value;
-    // Build startDateTime and endDateTime from separate Date + Time fields
+    // Read time fields early (they appear at the top of the form)
     const callDate = document.getElementById('callDate').value;
     const startTime = document.getElementById('startTime').value;
     const endTime = document.getElementById('endTime').value;
+
+    // --- Validate mandatory fields in top-to-bottom form order ---
+
+    // Row 1: Call Date, Start Time, End Time
+    if (!callDate) { highlightAndFocus('callDate'); showToast('Please enter a Call Date', 'error'); resetSaveBtn(); return; }
+    if (!startTime) { highlightAndFocus('startTime'); showToast('Please enter a Start Time', 'error'); resetSaveBtn(); return; }
+    if (!endTime) { highlightAndFocus('endTime'); showToast('Please enter an End Time', 'error'); resetSaveBtn(); return; }
+    if (timeToMins(endTime) < timeToMins(startTime)) { highlightAndFocus('endTime'); showToast('End time cannot be before start time', 'error'); resetSaveBtn(); return; }
+
+    // Source
+    const sourceVal = document.getElementById('source').value;
+    if (!sourceVal) { highlightAndFocus('source'); showToast('Please select a Source', 'error'); resetSaveBtn(); return; }
+
+    // Channel
+    const channelVal = document.getElementById('channel').value;
+    if (!channelVal) { highlightAndFocus('channel'); showToast('Please select a Channel', 'error'); resetSaveBtn(); return; }
+
+    // Tel No.
+    const telNoVal = document.getElementById('telNo').value.trim();
+    if (!telNoVal) { highlightAndFocus('telNo'); showToast('Please enter a Tel No.', 'error'); resetSaveBtn(); return; }
+
+    // Case Type
+    const caseTypeVal = document.getElementById('caseType').value;
+    if (!caseTypeVal) { highlightAndFocus('caseType'); showToast('Please select a Case Type', 'error'); resetSaveBtn(); return; }
+
+    // Category
+    const categoryVal = document.getElementById('category').value;
+    if (!categoryVal) { highlightAndFocus('category'); showToast('Please select a Category', 'error'); resetSaveBtn(); return; }
+
+    // Subcategory
+    const subcategoryVal = document.getElementById('subcategory').value;
+    if (!subcategoryVal) { highlightAndFocus('subcategory'); showToast('Please select a Subcategory', 'error'); resetSaveBtn(); return; }
+
+    // Subject
+    const subjectVal = document.getElementById('subject').value;
+    if (!subjectVal) { highlightAndFocus('subject'); showToast('Please select a Subject', 'error'); resetSaveBtn(); return; }
+
+    // Symptom
+    const symptomVal = document.getElementById('symptom').value.trim();
+    if (!symptomVal) { highlightAndFocus('symptom'); showToast('Please enter a Symptom / Description', 'error'); resetSaveBtn(); return; }
+
+    // Case Status (Action Result)
+    const actionResultVal = document.getElementById('actionResult').value;
+    if (!actionResultVal) { highlightAndFocus('actionResult'); showToast('Please select a Case Status', 'error'); resetSaveBtn(); return; }
+
+    const isNewJob = document.getElementById('isNewJob').value, originalJobId = document.getElementById('originalJobId').value, editingId = document.getElementById('editingCaseId').value;
     const startDT = `${callDate}T${startTime}`;
     const endDT = `${callDate}T${endTime}`;
     // For editing, get the existing jobId; for new cases, leave it empty (server will generate)
     const existingJobId = editingId ? document.getElementById('jobIdHeader').textContent : null;
-
-    // Validate end time is >= start time
-    if (timeToMins(endTime) < timeToMins(startTime)) {
-        highlightAndFocus('endTime');
-        showToast('End time cannot be before start time', 'error');
-        resetSaveBtn();
-        return;
-    }
     const dur = parseInt(document.getElementById('duration').value) || 1;
     const escalateVal = document.getElementById('escalateTicket').value.toUpperCase();
 
