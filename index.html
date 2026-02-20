@@ -2029,6 +2029,31 @@
         .admin-header h2 { font-size: 1.5rem; margin-bottom: 4px; display: flex; align-items: center; gap: 10px; }
         .admin-subtitle { color: var(--text-muted); font-size: 0.9rem; }
 
+        /* Monthly Report */
+        .report-header { margin-bottom: 16px; }
+        .report-header h2 { font-size: 1.5rem; margin-bottom: 4px; display: flex; align-items: center; gap: 10px; }
+        .report-controls { display: flex; gap: 20px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 24px; padding: 16px; background: var(--bg-secondary); border-radius: var(--radius-lg); border: 1px solid var(--border-color); }
+        .report-month-picker { min-width: 160px; }
+        .report-month-picker .form-input { padding: 10px 12px; }
+        .report-channel-tabs { display: flex; gap: 4px; }
+        .report-channel-tab { padding: 8px 16px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-secondary); border-radius: var(--radius-md); cursor: pointer; font-size: 0.85rem; font-weight: 500; transition: all 0.2s; }
+        .report-channel-tab:hover { background: var(--bg-tertiary); }
+        .report-channel-tab.active { background: var(--accent-primary); color: white; border-color: var(--accent-primary); }
+        .report-placeholder { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+        .report-placeholder i { font-size: 3rem; margin-bottom: 16px; opacity: 0.3; }
+        .report-placeholder p { font-size: 1rem; }
+        .report-section { margin-bottom: 32px; }
+        .report-section-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; color: var(--text-primary); }
+        .report-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .report-table th { background: var(--bg-tertiary); padding: 10px 12px; text-align: left; font-weight: 600; border-bottom: 2px solid var(--border-color); white-space: nowrap; }
+        .report-table td { padding: 9px 12px; border-bottom: 1px solid var(--border-color); }
+        .report-table tr:hover { background: var(--bg-secondary); }
+        .report-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+        .report-table .total-row { font-weight: 700; background: var(--bg-tertiary); }
+        .report-table-wrapper { overflow-x: auto; border-radius: var(--radius-md); border: 1px solid var(--border-color); }
+        .kpi-status-meet { color: var(--success); font-weight: 600; }
+        .kpi-status-below { color: var(--danger); font-weight: 600; }
+
         .admin-tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
         .admin-tab {
             padding: 10px 20px;
@@ -2683,6 +2708,7 @@
             }
         }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 </head>
 <body>
     <!-- Login Screen -->
@@ -2718,6 +2744,7 @@
             <div class="header-tabs">
                 <button class="header-tab active" onclick="navigateTo('dashboard')"><i class="fas fa-chart-pie"></i> <span class="tab-text">Dashboard</span></button>
                 <button class="header-tab" onclick="navigateTo('newCase')"><i class="fas fa-plus"></i> <span class="tab-text">New Case</span></button>
+                <button class="header-tab" id="reportTab" onclick="navigateTo('report')" style="display: none;"><i class="fas fa-file-alt"></i> <span class="tab-text">Monthly Report</span></button>
                 <button class="header-tab" id="adminTab" onclick="navigateTo('admin')" style="display: none;"><i class="fas fa-cog"></i> <span class="tab-text">Admin</span></button>
             </div>
             <div class="header-right">
@@ -3185,6 +3212,32 @@
         </div>
     </div>
 
+    <!-- Monthly Report View (Admin Only) -->
+            <div id="reportView" class="form-container">
+                <div class="report-header">
+                    <h2><i class="fas fa-file-alt" style="color: var(--accent-primary);"></i> Monthly Report</h2>
+                    <p class="admin-subtitle">Monthly case analysis and performance metrics</p>
+                </div>
+                <div class="report-controls">
+                    <div class="report-month-picker">
+                        <label class="form-label" style="margin-bottom:4px;">Service Month</label>
+                        <input type="month" class="form-input" id="reportMonth" onchange="generateReport()">
+                    </div>
+                    <div class="report-channel-filter">
+                        <label class="form-label" style="margin-bottom:4px;">Channel</label>
+                        <div class="report-channel-tabs">
+                            <button class="report-channel-tab active" data-channel="all" onclick="setReportChannel('all')">All</button>
+                            <button class="report-channel-tab" data-channel="Agency" onclick="setReportChannel('Agency')">Agency</button>
+                            <button class="report-channel-tab" data-channel="Broker" onclick="setReportChannel('Broker')">Broker</button>
+                            <button class="report-channel-tab" data-channel="Banca" onclick="setReportChannel('Banca')">Banca</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="reportContent">
+                    <div class="report-placeholder"><i class="fas fa-chart-bar"></i><p>Select a service month to generate the report</p></div>
+                </div>
+            </div>
+
     <!-- Toast & Modal -->
     <div class="toast" id="toast"><i class="fas fa-check-circle"></i><span id="toastMessage">Saved!</span></div>
     <div class="confirm-overlay" id="confirmOverlay">
@@ -3217,7 +3270,7 @@ let isLoading = false;
 // Dropdown options constants - defined here to ensure consistent ordering across the app
 const CASE_TYPES = ["Service", "Incident", "Enquiry"];
 const CATEGORIES = ["Business Usage / Training", "Infra / Device", "User Login / Authentication", "Application Functionality / Data Issue", "Staff Service Requests", "Non-Helpdesk Requests"];
-const SOURCES = ["Hotline", "WhatsApp", "Private Contact", "Voice Message", "Request from IT"];
+const SOURCES = ["Hotline", "WhatsApp", "Private Contact", "Voice Message", "Email", "Request from IT"];
 const ACTION_RESULTS = ["Pending Follow-up", "Completed"];
 const SUBCATEGORIES = ["Digital - AWB", "Digital - SunSmart V8", "Digital - SunSmart (iPad)", "Digital - SunSmart (Web SI)", "Digital - SunSmart MPF", "Digital - SunOffice", "Digital - SunSurf", "Digital - eRecruitment", "Digital - eLearning", "Digital - SunVisual", "Digital - Client App", "GIT - Hardware", "GIT - Printing", "GIT - Google Services", "GIT - Network", "Others"];
 
@@ -4022,6 +4075,10 @@ function updateAdminAccess() {
     if (adminTab) {
         adminTab.style.display = currentUser && currentUser.role === 'admin' ? 'flex' : 'none';
     }
+    const reportTab = document.getElementById('reportTab');
+    if (reportTab) {
+        reportTab.style.display = currentUser && currentUser.role === 'admin' ? 'flex' : 'none';
+    }
 }
 
 function updateAdminUIRestrictions() {
@@ -4403,6 +4460,7 @@ function showView(viewName, skipReset = false) {
     document.getElementById('newCaseView').classList.remove('active');
     document.getElementById('caseDetailView').classList.remove('active');
     document.getElementById('adminView').classList.remove('active');
+    document.getElementById('reportView').classList.remove('active');
     document.getElementById('formButtonGroup').classList.remove('show');
     document.querySelectorAll('.header-tab').forEach(t => t.classList.remove('active'));
     switch(viewName) {
@@ -4418,6 +4476,12 @@ function showView(viewName, skipReset = false) {
             break;
         case 'newCase': document.getElementById('newCaseView').classList.add('active'); document.getElementById('formButtonGroup').classList.add('show'); if (!skipReset) { document.querySelectorAll('.header-tab')[1].classList.add('active'); resetNewCaseForm(); } break;
         case 'caseDetail': document.getElementById('caseDetailView').classList.add('active'); break;
+        case 'report':
+            document.getElementById('reportView').classList.add('active');
+            document.getElementById('reportTab').classList.add('active');
+            initReportMonth();
+            generateReport();
+            break;
         case 'admin':
             document.getElementById('adminView').classList.add('active');
             document.getElementById('adminTab').classList.add('active');
@@ -9023,6 +9087,315 @@ window.handleReLogin = handleReLogin;
 window.performLogoutReset = performLogoutReset;
 window.initGoogleSignIn = initGoogleSignIn;
 window.showLoginError = showLoginError;
+
+// --- Monthly Report ---
+var reportChannel = 'all';
+
+function setReportChannel(channel) {
+    reportChannel = channel;
+    document.querySelectorAll('.report-channel-tab').forEach(function(t) {
+        t.classList.toggle('active', t.dataset.channel === channel);
+    });
+    generateReport();
+}
+
+function initReportMonth() {
+    var now = new Date();
+    // Default to last month
+    var lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    var y = lastMonth.getFullYear();
+    var m = String(lastMonth.getMonth() + 1).padStart(2, '0');
+    var input = document.getElementById('reportMonth');
+    if (input) input.value = y + '-' + m;
+}
+
+function generateReport() {
+    var monthVal = document.getElementById('reportMonth').value;
+    if (!monthVal) {
+        document.getElementById('reportContent').innerHTML = '<div class="report-placeholder"><i class="fas fa-chart-bar"></i><p>Select a service month to generate the report</p></div>';
+        return;
+    }
+    var data = buildReportData(monthVal, reportChannel);
+    var html = '';
+    html += renderKPISummary(data);
+    html += renderChannelPerformance(data);
+    html += renderCaseStatusTable(data);
+    // Remaining sections will be added in future pieces
+    document.getElementById('reportContent').innerHTML = html;
+    renderCaseStatusDonut(data);
+}
+
+// --- Report data computation helpers ---
+
+// Source grouping: Call, WhatsApp, Others
+function getReportSourceGroup(source) {
+    if (!source) return 'Others';
+    switch (source) {
+        case 'Hotline':
+        case 'Private Contact':
+        case 'Voice Message':
+            return 'Call';
+        case 'WhatsApp':
+            return 'WhatsApp';
+        default:
+            return 'Others';
+    }
+}
+
+// Get root cases for a given month and channel filter
+function getReportRootCases(monthVal, channel) {
+    var parts = monthVal.split('-');
+    var year = parseInt(parts[0]);
+    var month = parseInt(parts[1]) - 1;
+    var monthStart = new Date(year, month, 1);
+    var monthEnd = new Date(year, month + 1, 0, 23, 59, 59);
+
+    // Get all cases from adminCases (admin has all helpdesk data)
+    var allCases = adminCases || cases || [];
+
+    // Filter root cases whose OWN createDate falls within the month
+    var roots = allCases.filter(function(c) {
+        if (c.isNewJob !== 'Y') return false;
+        var d = new Date(c.createDate);
+        if (d < monthStart || d > monthEnd) return false;
+        if (channel !== 'all' && c.channel !== channel) return false;
+        return true;
+    });
+
+    return roots;
+}
+
+// Get all related cases for a root case (root + follow-ups)
+function getRelatedCases(rootCase) {
+    var allCases = adminCases || cases || [];
+    return allCases.filter(function(c) {
+        return c.jobId === rootCase.jobId || c.followUpJobId === rootCase.jobId;
+    });
+}
+
+// Get total duration for a root case group (root + all follow-ups)
+function getGroupDuration(rootCase) {
+    var related = getRelatedCases(rootCase);
+    var total = 0;
+    related.forEach(function(c) {
+        total += parseInt(c.duration) || 0;
+    });
+    return total;
+}
+
+// Check if a root case group is escalated (any case has escalateTicket)
+function isGroupEscalated(rootCase) {
+    var related = getRelatedCases(rootCase);
+    return related.some(function(c) {
+        return c.escalateTicket && c.escalateTicket.trim() !== '';
+    });
+}
+
+// Build full report data object for all sections to use
+function buildReportData(monthVal, channel) {
+    var roots = getReportRootCases(monthVal, channel);
+    var totalCases = roots.length;
+    var resolvedCount = 0;
+    var escalatedCount = 0;
+    var totalDuration = 0;
+    var within20 = 0;
+
+    roots.forEach(function(root) {
+        var dur = getGroupDuration(root);
+        totalDuration += dur;
+        var escalated = isGroupEscalated(root);
+        if (escalated) {
+            escalatedCount++;
+        } else {
+            resolvedCount++;
+        }
+        if (dur <= 20) within20++;
+    });
+
+    return {
+        roots: roots,
+        totalCases: totalCases,
+        resolvedCount: resolvedCount,
+        escalatedCount: escalatedCount,
+        totalDuration: totalDuration,
+        avgDuration: totalCases > 0 ? (totalDuration / totalCases) : 0,
+        within20: within20,
+        within20Pct: totalCases > 0 ? (within20 / totalCases * 100) : 0
+    };
+}
+
+// Section 1: KPI Summary
+function renderKPISummary(data) {
+    var resRate = data.totalCases > 0 ? (data.resolvedCount / data.totalCases * 100) : 0;
+    var resTarget = 90;
+    var avgTarget = 20;
+    var w20Target = 90;
+
+    function kpiStatus(val, target, higherIsBetter) {
+        var meet = higherIsBetter ? val >= target : val <= target;
+        return meet ? '<span class="kpi-status-meet"><i class="fas fa-check-circle"></i> Meet Target</span>' : '<span class="kpi-status-below"><i class="fas fa-exclamation-triangle"></i> Below Target</span>';
+    }
+
+    var html = '<div class="report-section">';
+    html += '<div class="report-section-title"><i class="fas fa-tachometer-alt" style="color:var(--accent-primary)"></i> Case Resolution Summary</div>';
+    html += '<div class="report-table-wrapper"><table class="report-table">';
+    html += '<thead><tr><th>Metric</th><th class="num">Actual</th><th class="num">Target</th><th>Status</th></tr></thead>';
+    html += '<tbody>';
+    html += '<tr><td>Total Cases (Root Only)</td><td class="num">' + data.totalCases.toLocaleString() + '</td><td class="num">-</td><td>-</td></tr>';
+    html += '<tr><td>Resolved Cases</td><td class="num">' + data.resolvedCount.toLocaleString() + '</td><td class="num">-</td><td>-</td></tr>';
+    html += '<tr><td>Escalated Cases</td><td class="num">' + data.escalatedCount.toLocaleString() + '</td><td class="num">-</td><td>-</td></tr>';
+    html += '<tr><td>Resolution Rate (%)</td><td class="num">' + resRate.toFixed(1) + '%</td><td class="num">&ge; ' + resTarget + '%</td><td>' + kpiStatus(resRate, resTarget, true) + '</td></tr>';
+    html += '<tr><td>Cases Resolved / Escalated &le; 20 mins (%)</td><td class="num">' + data.within20Pct.toFixed(1) + '%</td><td class="num">&ge; ' + w20Target + '%</td><td>' + kpiStatus(data.within20Pct, w20Target, true) + '</td></tr>';
+    html += '<tr><td>Average Resolution Time (mins)</td><td class="num">' + data.avgDuration.toFixed(1) + '</td><td class="num">&le; ' + avgTarget + ' mins</td><td>' + kpiStatus(data.avgDuration, avgTarget, false) + '</td></tr>';
+    html += '</tbody></table></div></div>';
+    return html;
+}
+
+// Section 2: Case Resolution Performance by Channel
+function renderChannelPerformance(data) {
+    var channels = ['Agency', 'Banca', 'Broker'];
+    var sourceGroups = ['Call', 'WhatsApp', 'Others'];
+
+    // Build per-channel stats
+    var channelStats = {};
+    channels.forEach(function(ch) { channelStats[ch] = { call: 0, whatsapp: 0, others: 0, total: 0, resolved: 0, escalated: 0, within20: 0, over20: 0, totalDur: 0 }; });
+
+    data.roots.forEach(function(root) {
+        var ch = root.channel;
+        if (!channelStats[ch]) return;
+        var sg = getReportSourceGroup(root.source);
+        if (sg === 'Call') channelStats[ch].call++;
+        else if (sg === 'WhatsApp') channelStats[ch].whatsapp++;
+        else channelStats[ch].others++;
+        channelStats[ch].total++;
+
+        var dur = getGroupDuration(root);
+        channelStats[ch].totalDur += dur;
+        if (dur <= 20) channelStats[ch].within20++;
+        else channelStats[ch].over20++;
+
+        if (isGroupEscalated(root)) channelStats[ch].escalated++;
+        else channelStats[ch].resolved++;
+    });
+
+    var html = '<div class="report-section">';
+    html += '<div class="report-section-title"><i class="fas fa-columns" style="color:var(--info)"></i> Case Resolution Performance by Channel</div>';
+    html += '<div class="report-table-wrapper"><table class="report-table">';
+    html += '<thead><tr><th>Channel</th>';
+    sourceGroups.forEach(function(s) { html += '<th class="num">' + s + '</th>'; });
+    html += '<th class="num">Total</th><th class="num">Rate%</th>';
+    html += '<th class="num">Resolved</th><th class="num">%</th>';
+    html += '<th class="num">Escalated</th><th class="num">%</th>';
+    html += '<th class="num">&le;20m</th><th class="num">%</th>';
+    html += '<th class="num">&gt;20m</th><th class="num">%</th>';
+    html += '<th class="num">Avg Min</th>';
+    html += '</tr></thead><tbody>';
+
+    var grandTotal = data.totalCases;
+
+    channels.forEach(function(ch) {
+        var s = channelStats[ch];
+        if (s.total === 0 && reportChannel !== 'all') return;
+        var ratePct = grandTotal > 0 ? (s.total / grandTotal * 100) : 0;
+        var resPct = s.total > 0 ? (s.resolved / s.total * 100) : 0;
+        var escPct = s.total > 0 ? (s.escalated / s.total * 100) : 0;
+        var w20Pct = s.total > 0 ? (s.within20 / s.total * 100) : 0;
+        var o20Pct = s.total > 0 ? (s.over20 / s.total * 100) : 0;
+        var avgDur = s.total > 0 ? (s.totalDur / s.total) : 0;
+        html += '<tr><td>' + ch + '</td>';
+        html += '<td class="num">' + s.call + '</td><td class="num">' + s.whatsapp + '</td><td class="num">' + s.others + '</td>';
+        html += '<td class="num">' + s.total + '</td><td class="num">' + ratePct.toFixed(1) + '%</td>';
+        html += '<td class="num">' + s.resolved + '</td><td class="num">' + resPct.toFixed(1) + '%</td>';
+        html += '<td class="num">' + s.escalated + '</td><td class="num">' + escPct.toFixed(1) + '%</td>';
+        html += '<td class="num">' + s.within20 + '</td><td class="num">' + w20Pct.toFixed(1) + '%</td>';
+        html += '<td class="num">' + s.over20 + '</td><td class="num">' + o20Pct.toFixed(1) + '%</td>';
+        html += '<td class="num">' + avgDur.toFixed(1) + '</td></tr>';
+    });
+
+    // Overall row
+    var oResPct = data.totalCases > 0 ? (data.resolvedCount / data.totalCases * 100) : 0;
+    var oEscPct = data.totalCases > 0 ? (data.escalatedCount / data.totalCases * 100) : 0;
+    var oW20Pct = data.totalCases > 0 ? (data.within20 / data.totalCases * 100) : 0;
+    var oOver20 = data.totalCases - data.within20;
+    var oO20Pct = data.totalCases > 0 ? (oOver20 / data.totalCases * 100) : 0;
+    var totalCall = 0, totalWA = 0, totalOth = 0;
+    channels.forEach(function(ch) { totalCall += channelStats[ch].call; totalWA += channelStats[ch].whatsapp; totalOth += channelStats[ch].others; });
+
+    html += '<tr class="total-row"><td>Overall</td>';
+    html += '<td class="num">' + totalCall + '</td><td class="num">' + totalWA + '</td><td class="num">' + totalOth + '</td>';
+    html += '<td class="num">' + data.totalCases + '</td><td class="num">100%</td>';
+    html += '<td class="num">' + data.resolvedCount + '</td><td class="num">' + oResPct.toFixed(1) + '%</td>';
+    html += '<td class="num">' + data.escalatedCount + '</td><td class="num">' + oEscPct.toFixed(1) + '%</td>';
+    html += '<td class="num">' + data.within20 + '</td><td class="num">' + oW20Pct.toFixed(1) + '%</td>';
+    html += '<td class="num">' + oOver20 + '</td><td class="num">' + oO20Pct.toFixed(1) + '%</td>';
+    html += '<td class="num">' + data.avgDuration.toFixed(1) + '</td></tr>';
+
+    html += '</tbody></table></div></div>';
+    return html;
+}
+
+// Section 3: Case Status by Channel (table only)
+function renderCaseStatusTable(data) {
+    var channels = ['Agency', 'Banca', 'Broker'];
+    var stats = {};
+    channels.forEach(function(ch) { stats[ch] = { resolved: 0, escalated: 0 }; });
+    data.roots.forEach(function(root) {
+        var ch = root.channel;
+        if (!stats[ch]) return;
+        if (isGroupEscalated(root)) stats[ch].escalated++;
+        else stats[ch].resolved++;
+    });
+    var html = '<div class="report-section">';
+    html += '<div class="report-section-title"><i class="fas fa-clipboard-list" style="color:var(--warning)"></i> Case Status by Channel</div>';
+    html += '<div class="report-table-wrapper"><table class="report-table">';
+    html += '<thead><tr><th>Status</th>';
+    channels.forEach(function(ch) { html += '<th class="num">' + ch + '</th>'; });
+    html += '<th class="num">Total</th><th class="num">Rate%</th></tr></thead><tbody>';
+    var totRes = 0, totEsc = 0;
+    channels.forEach(function(ch) { totRes += stats[ch].resolved; totEsc += stats[ch].escalated; });
+    var grand = totRes + totEsc;
+    // Resolved row
+    html += '<tr><td>Resolved</td>';
+    channels.forEach(function(ch) { html += '<td class="num">' + stats[ch].resolved + '</td>'; });
+    html += '<td class="num">' + totRes + '</td><td class="num">' + (grand > 0 ? (totRes/grand*100).toFixed(1) : '0.0') + '%</td></tr>';
+    // Escalated row
+    html += '<tr><td>Escalated</td>';
+    channels.forEach(function(ch) { html += '<td class="num">' + stats[ch].escalated + '</td>'; });
+    html += '<td class="num">' + totEsc + '</td><td class="num">' + (grand > 0 ? (totEsc/grand*100).toFixed(1) : '0.0') + '%</td></tr>';
+    // Total row
+    html += '<tr class="total-row"><td>Total</td>';
+    channels.forEach(function(ch) { html += '<td class="num">' + (stats[ch].resolved + stats[ch].escalated) + '</td>'; });
+    html += '<td class="num">' + grand + '</td><td class="num">100%</td></tr>';
+    html += '</tbody></table></div>';
+    html += '<div style="max-width:320px;margin:18px auto 0"><canvas id="caseStatusDonut"></canvas></div>';
+    html += '</div>';
+    return html;
+}
+
+function renderCaseStatusDonut(data) {
+    var canvas = document.getElementById('caseStatusDonut');
+    if (!canvas) return;
+    var res = data.resolvedCount;
+    var esc = data.escalatedCount;
+    if (res === 0 && esc === 0) return;
+    new Chart(canvas, {
+        type: 'doughnut',
+        data: {
+            labels: ['Resolved', 'Escalated'],
+            datasets: [{ data: [res, esc], backgroundColor: ['#22c55e', '#ef4444'], borderWidth: 2 }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'bottom' },
+                title: { display: true, text: 'Case Status Distribution', font: { size: 14 } }
+            }
+        }
+    });
+}
+
+window.setReportChannel = setReportChannel;
+window.generateReport = generateReport;
 </script>
 </body>
 </html>
