@@ -4223,6 +4223,7 @@ function performLogoutReset() {
     adminCachedEndDate = null;
     adminCacheTimestamp = null;
     adminCachePeriod = null;
+    reportMonthsLoaded = {};
     updateDataLoadedRange();
 
     // Reset custom date ranges
@@ -9073,6 +9074,7 @@ window.showLoginError = showLoginError;
 
 // --- Monthly Report ---
 var reportChannel = 'all';
+var reportMonthsLoaded = {};
 
 function setReportChannel(channel) {
     reportChannel = channel;
@@ -9087,44 +9089,64 @@ function initReportMonth() {
     if (input) input.value = '';
 }
 
+/**
+ * Shared helper: load cases for a date range and merge into the global cache.
+ * Deduplicates against existing adminCases and updates cache boundaries.
+ * Used by both generateReport and loadAdminCases to avoid code duplication.
+ */
+async function loadAndMergeDateRange(startDate, endDate, progressPrefix) {
+    var worksheetsToLoad = getWorksheetsToLoad();
+    var loadResult = await loadCases({
+        startDate: startDate,
+        endDate: endDate,
+        worksheets: worksheetsToLoad,
+        showProgress: true,
+        progressPrefix: progressPrefix || 'Loading data...'
+    });
+    if (loadResult.cases && loadResult.cases.length > 0) {
+        var existingIds = {};
+        adminCases.forEach(function(c) { existingIds[c.jobId + '_' + c.worksheet] = true; });
+        var newCases = loadResult.cases.filter(function(c) { return !existingIds[c.jobId + '_' + c.worksheet]; });
+        if (newCases.length > 0) {
+            adminCases = adminCases.concat(newCases);
+            cases = adminCases;
+        }
+        if (loadResult.actualStartDate && (!adminCachedStartDate || loadResult.actualStartDate < adminCachedStartDate)) {
+            adminCachedStartDate = loadResult.actualStartDate;
+        }
+        if (loadResult.actualEndDate && (!adminCachedEndDate || loadResult.actualEndDate > adminCachedEndDate)) {
+            adminCachedEndDate = loadResult.actualEndDate;
+        }
+    }
+    return loadResult;
+}
+
 async function generateReport() {
     var monthVal = document.getElementById('reportMonth').value;
     if (!monthVal) {
         document.getElementById('reportContent').innerHTML = '<div class="report-placeholder"><i class="fas fa-chart-bar"></i><p>Select a service month to generate the report</p></div>';
         return;
     }
-    var parts = monthVal.split('-');
-    var monthStart = parts[0] + '-' + parts[1] + '-01';
-    var lastDay = new Date(parseInt(parts[0]), parseInt(parts[1]), 0).getDate();
-    var monthEnd = parts[0] + '-' + parts[1] + '-' + String(lastDay).padStart(2, '0');
-    if (!isDateRangeCovered(monthStart, monthEnd)) {
-        document.getElementById('reportContent').innerHTML = '<div class="report-placeholder"><i class="fas fa-spinner fa-spin"></i><p>Loading data for selected month...</p></div>';
-        var loadResult = await loadCases({
-            startDate: monthStart,
-            endDate: monthEnd,
-            worksheets: getWorksheetsToLoad(),
-            showProgress: true,
-            progressPrefix: 'Loading report data...'
-        });
-        if (loadResult.cases && loadResult.cases.length > 0) {
-            var existingJobIds = {};
-            adminCases.forEach(function(c) { existingJobIds[c.jobId + '_' + c.worksheet] = true; });
-            var newCases = loadResult.cases.filter(function(c) { return !existingJobIds[c.jobId + '_' + c.worksheet]; });
-            adminCases = adminCases.concat(newCases);
-            cases = adminCases;
-            if (loadResult.actualStartDate && (!adminCachedStartDate || loadResult.actualStartDate < adminCachedStartDate)) {
-                adminCachedStartDate = loadResult.actualStartDate;
-            }
-            if (loadResult.actualEndDate && (!adminCachedEndDate || loadResult.actualEndDate > adminCachedEndDate)) {
-                adminCachedEndDate = loadResult.actualEndDate;
-            }
+    if (!reportMonthsLoaded[monthVal]) {
+        document.getElementById('reportContent').innerHTML = '<div class="report-placeholder"><i class="fas fa-spinner fa-spin"></i><p>Loading data for ' + monthVal + '...</p></div>';
+        var parts = monthVal.split('-');
+        var monthStart = parts[0] + '-' + parts[1] + '-01';
+        var lastDay = new Date(parseInt(parts[0]), parseInt(parts[1]), 0).getDate();
+        var monthEnd = parts[0] + '-' + parts[1] + '-' + String(lastDay).padStart(2, '0');
+        try {
+            await loadAndMergeDateRange(monthStart, monthEnd, 'Loading report data...');
+            reportMonthsLoaded[monthVal] = true;
+        } catch (err) {
+            document.getElementById('reportContent').innerHTML = '<div class="report-placeholder"><i class="fas fa-exclamation-triangle"></i><p>Error loading data: ' + err.message + '</p></div>';
+            return;
         }
     }
+    document.getElementById('reportContent').innerHTML = '<div class="report-placeholder"><i class="fas fa-spinner fa-spin" style="font-size:2rem;color:var(--primary)"></i><p>Generating report...</p></div>';
+    await new Promise(function(r) { setTimeout(r, 50); });
     var data = buildReportData(monthVal, reportChannel);
     var html = '';
     html += renderKPISummary(data);
     html += renderChannelPerformance(data);
-    html += renderCaseStatusTable(data);
     html += renderDailyBreakdown(data);
     html += renderHourlyBreakdown(data);
     html += renderTop10Subcategory(data);
@@ -9321,13 +9343,13 @@ function renderChannelPerformance(data) {
         var o20Pct = s.total > 0 ? (s.over20 / s.total * 100) : 0;
         var avgDur = s.total > 0 ? (s.totalDur / s.total) : 0;
         html += '<tr><td>' + ch + '</td>';
-        html += '<td class="num">' + fmtInt(s.call) + '</td><td class="num">' + fmtInt(s.whatsapp) + '</td><td class="num">' + fmtInt(s.others) + '</td>';
-        html += '<td class="num">' + fmtInt(s.total) + '</td><td class="num">' + fmtDec(ratePct) + '%</td>';
-        html += '<td class="num">' + fmtInt(s.resolved) + '</td><td class="num">' + fmtDec(resPct) + '%</td>';
-        html += '<td class="num">' + fmtInt(s.escalated) + '</td><td class="num">' + fmtDec(escPct) + '%</td>';
-        html += '<td class="num">' + fmtInt(s.within20) + '</td><td class="num">' + fmtDec(w20Pct) + '%</td>';
-        html += '<td class="num">' + fmtInt(s.over20) + '</td><td class="num">' + fmtDec(o20Pct) + '%</td>';
-        html += '<td class="num">' + fmtDec(avgDur) + '</td></tr>';
+        html += '<td class="num" style="background:rgba(59,130,246,0.06)">' + fmtInt(s.call) + '</td><td class="num" style="background:rgba(59,130,246,0.06)">' + fmtInt(s.whatsapp) + '</td><td class="num" style="background:rgba(59,130,246,0.06)">' + fmtInt(s.others) + '</td>';
+        html += '<td class="num" style="background:rgba(34,197,94,0.06)">' + fmtInt(s.total) + '</td><td class="num" style="background:rgba(34,197,94,0.06)">' + fmtDec(ratePct) + '%</td>';
+        html += '<td class="num" style="background:rgba(249,115,22,0.06)">' + fmtInt(s.resolved) + '</td><td class="num" style="background:rgba(249,115,22,0.06)">' + fmtDec(resPct) + '%</td>';
+        html += '<td class="num" style="background:rgba(249,115,22,0.06)">' + fmtInt(s.escalated) + '</td><td class="num" style="background:rgba(249,115,22,0.06)">' + fmtDec(escPct) + '%</td>';
+        html += '<td class="num" style="background:rgba(139,92,246,0.06)">' + fmtInt(s.within20) + '</td><td class="num" style="background:rgba(139,92,246,0.06)">' + fmtDec(w20Pct) + '%</td>';
+        html += '<td class="num" style="background:rgba(139,92,246,0.06)">' + fmtInt(s.over20) + '</td><td class="num" style="background:rgba(139,92,246,0.06)">' + fmtDec(o20Pct) + '%</td>';
+        html += '<td class="num" style="background:rgba(139,92,246,0.06)">' + fmtDec(avgDur) + '</td></tr>';
     });
 
     // Overall row
@@ -9340,13 +9362,13 @@ function renderChannelPerformance(data) {
     channels.forEach(function(ch) { totalCall += channelStats[ch].call; totalWA += channelStats[ch].whatsapp; totalOth += channelStats[ch].others; });
 
     html += '<tr class="total-row"><td>Overall</td>';
-    html += '<td class="num">' + fmtInt(totalCall) + '</td><td class="num">' + fmtInt(totalWA) + '</td><td class="num">' + fmtInt(totalOth) + '</td>';
-    html += '<td class="num">' + fmtInt(data.totalCases) + '</td><td class="num">100%</td>';
-    html += '<td class="num">' + fmtInt(data.resolvedCount) + '</td><td class="num">' + fmtDec(oResPct) + '%</td>';
-    html += '<td class="num">' + fmtInt(data.escalatedCount) + '</td><td class="num">' + fmtDec(oEscPct) + '%</td>';
-    html += '<td class="num">' + fmtInt(data.within20) + '</td><td class="num">' + fmtDec(oW20Pct) + '%</td>';
-    html += '<td class="num">' + fmtInt(oOver20) + '</td><td class="num">' + fmtDec(oO20Pct) + '%</td>';
-    html += '<td class="num">' + fmtDec(data.avgDuration) + '</td></tr>';
+    html += '<td class="num" style="background:rgba(59,130,246,0.06)">' + fmtInt(totalCall) + '</td><td class="num" style="background:rgba(59,130,246,0.06)">' + fmtInt(totalWA) + '</td><td class="num" style="background:rgba(59,130,246,0.06)">' + fmtInt(totalOth) + '</td>';
+    html += '<td class="num" style="background:rgba(34,197,94,0.06)">' + fmtInt(data.totalCases) + '</td><td class="num" style="background:rgba(34,197,94,0.06)">100%</td>';
+    html += '<td class="num" style="background:rgba(249,115,22,0.06)">' + fmtInt(data.resolvedCount) + '</td><td class="num" style="background:rgba(249,115,22,0.06)">' + fmtDec(oResPct) + '%</td>';
+    html += '<td class="num" style="background:rgba(249,115,22,0.06)">' + fmtInt(data.escalatedCount) + '</td><td class="num" style="background:rgba(249,115,22,0.06)">' + fmtDec(oEscPct) + '%</td>';
+    html += '<td class="num" style="background:rgba(139,92,246,0.06)">' + fmtInt(data.within20) + '</td><td class="num" style="background:rgba(139,92,246,0.06)">' + fmtDec(oW20Pct) + '%</td>';
+    html += '<td class="num" style="background:rgba(139,92,246,0.06)">' + fmtInt(oOver20) + '</td><td class="num" style="background:rgba(139,92,246,0.06)">' + fmtDec(oO20Pct) + '%</td>';
+    html += '<td class="num" style="background:rgba(139,92,246,0.06)">' + fmtDec(data.avgDuration) + '</td></tr>';
 
     html += '</tbody></table></div></div>';
     return html;
@@ -9456,7 +9478,7 @@ function renderDailyBreakdown(data) {
     var totalAvg = totalActivities > 0 ? (totalDuration / totalActivities) : 0;
     html += '<tr style="font-weight:bold;background:var(--bg-tertiary);"><td colspan="2">Total</td><td class="num">' + fmtInt(totalActivities) + '</td><td class="num">' + fmtInt(totalDuration) + '</td><td class="num">' + fmtDec(totalAvg) + '</td></tr>';
     html += '</tbody></table></div>';
-    html += '<div style="max-width:700px;margin:18px auto 0"><canvas id="dailyBreakdownChart"></canvas></div>';
+    html += '<div style="max-width:100%;margin:18px auto 0"><canvas id="dailyBreakdownChart"></canvas></div>';
     html += '</div>';
     return html;
 }
@@ -9572,7 +9594,7 @@ function renderTop10Subcategory(data) {
         html += '<tr><td>' + (idx + 1) + '</td><td>' + item.subCategory + '</td><td class="num">' + fmtInt(item.count) + '</td><td class="num">' + fmtInt(item.totalDuration) + '</td><td class="num">' + fmtDec(avg) + '</td></tr>';
     });
     html += '</tbody></table></div>';
-    html += '<div style="max-width:700px;margin:18px auto 0"><canvas id="top10SubcatChart"></canvas></div>';
+    html += '<div style="max-width:100%;margin:18px auto 0"><canvas id="top10SubcatChart"></canvas></div>';
     html += '</div>';
     return html;
 }
@@ -9611,7 +9633,8 @@ function renderTop10SubcatChart(data) {
                 legend: { position: 'bottom' }
             },
             scales: {
-                x: { beginAtZero: true }
+                x: { beginAtZero: true },
+                y: { ticks: { autoSkip: false } }
             }
         }
     });
@@ -9633,10 +9656,10 @@ function renderTop10CategoryPath(data) {
     html += '<div class="report-table-wrapper"><table class="report-table"><thead><tr><th>Rank</th><th>Category Path</th><th class="num">Cases</th><th class="num">Total Duration (min)</th><th class="num">Avg Duration (min)</th></tr></thead><tbody>';
     sorted.forEach(function(item, i) {
         var avg = item.count > 0 ? (item.totalDuration / item.count) : 0;
-        html += '<tr><td>' + (i + 1) + '</td><td>' + item.path + '</td><td class="num">' + fmtInt(item.count) + '</td><td class="num">' + fmtDec(item.totalDuration) + '</td><td class="num">' + fmtDec(avg) + '</td></tr>';
+        html += '<tr><td>' + (i + 1) + '</td><td>' + item.path + '</td><td class="num">' + fmtInt(item.count) + '</td><td class="num">' + fmtInt(item.totalDuration) + '</td><td class="num">' + fmtDec(avg) + '</td></tr>';
     });
     html += '</tbody></table></div>';
-    html += '<div style="max-width:700px;margin:18px auto 0"><canvas id="top10CatPathChart"></canvas></div>';
+    html += '<div style="max-width:100%;margin:18px auto 0"><canvas id="top10CatPathChart"></canvas></div>';
     html += '</div>';
     return html;
 }
@@ -9673,7 +9696,8 @@ function renderTop10CatPathChart(data) {
                 legend: { position: 'bottom' }
             },
             scales: {
-                x: { beginAtZero: true }
+                x: { beginAtZero: true },
+                y: { ticks: { autoSkip: false } }
             }
         }
     });
@@ -9700,12 +9724,12 @@ function renderCategoryBreakdown(data) {
   sorted.forEach(function(row) {
     const avg = row.count > 0 ? (row.duration / row.count) : 0;
     const pct = totalCases > 0 ? ((row.count / totalCases) * 100) : 0;
-    html += '<tr><td>' + row.category + '</td><td class="num">' + fmtInt(row.count) + '</td><td class="num">' + fmtDec(row.duration) + '</td><td class="num">' + fmtDec(avg) + '</td><td class="num">' + fmtDec(pct) + '%</td></tr>';
+    html += '<tr><td>' + row.category + '</td><td class="num">' + fmtInt(row.count) + '</td><td class="num">' + fmtInt(row.duration) + '</td><td class="num">' + fmtDec(avg) + '</td><td class="num">' + fmtDec(pct) + '%</td></tr>';
   });
   const totalAvg = totalCases > 0 ? (totalDuration / totalCases) : 0;
-  html += '<tr class="total-row"><td>Total</td><td class="num">' + fmtInt(totalCases) + '</td><td class="num">' + fmtDec(totalDuration) + '</td><td class="num">' + fmtDec(totalAvg) + '</td><td class="num">100.0%</td></tr>';
+  html += '<tr class="total-row"><td>Total</td><td class="num">' + fmtInt(totalCases) + '</td><td class="num">' + fmtInt(totalDuration) + '</td><td class="num">' + fmtDec(totalAvg) + '</td><td class="num">100.0%</td></tr>';
   html += '</tbody></table></div>';
-  html += '<div style="max-width:700px;margin:18px auto 0"><canvas id="categoryBreakdownChart"></canvas></div>';
+  html += '<div style="max-width:100%;margin:18px auto 0"><canvas id="categoryBreakdownChart"></canvas></div>';
   html += '</div>';
   return html;
 }
@@ -9845,10 +9869,10 @@ function renderTimePeriodBreakdown(data) {
   periodStats.forEach(ps => {
     const avg = ps.count > 0 ? (ps.totalDuration / ps.count) : 0;
     const pct = totalCases > 0 ? ((ps.count / totalCases) * 100) : 0;
-    html += '<tr><td>' + ps.name + '</td><td class="num">' + fmtInt(ps.count) + '</td><td class="num">' + fmtDec(ps.totalDuration) + '</td><td class="num">' + fmtDec(avg) + '</td><td class="num">' + fmtDec(pct) + '%</td></tr>';
+    html += '<tr><td>' + ps.name + '</td><td class="num">' + fmtInt(ps.count) + '</td><td class="num">' + fmtInt(ps.totalDuration) + '</td><td class="num">' + fmtDec(avg) + '</td><td class="num">' + fmtDec(pct) + '%</td></tr>';
   });
   const totalAvg = totalCases > 0 ? (totalDur / totalCases) : 0;
-  html += '<tr class="total-row"><td>Total</td><td class="num">' + fmtInt(totalCases) + '</td><td class="num">' + fmtDec(totalDur) + '</td><td class="num">' + fmtDec(totalAvg) + '</td><td class="num">100.0%</td></tr>';
+  html += '<tr class="total-row"><td>Total</td><td class="num">' + fmtInt(totalCases) + '</td><td class="num">' + fmtInt(totalDur) + '</td><td class="num">' + fmtDec(totalAvg) + '</td><td class="num">100.0%</td></tr>';
   html += '</tbody></table></div>';
   html += '</div>';
   return html;
@@ -9907,7 +9931,7 @@ function renderHourlyBreakdown(data) {
     var totalAvg = totalActivities > 0 ? (totalDuration / totalActivities) : 0;
     html += '<tr style="font-weight:bold;background:var(--bg-tertiary);"><td>Total</td><td class="num">' + fmtInt(totalActivities) + '</td><td class="num">' + fmtInt(totalDuration) + '</td><td class="num">' + fmtDec(totalAvg) + '</td></tr>';
     html += '</tbody></table></div>';
-    html += '<div style="max-width:700px;margin:18px auto 0"><canvas id="hourlyBreakdownChart"></canvas></div>';
+    html += '<div style="max-width:100%;margin:18px auto 0"><canvas id="hourlyBreakdownChart"></canvas></div>';
     html += '</div>';
     return html;
 }
