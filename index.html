@@ -4223,7 +4223,6 @@ function performLogoutReset() {
     adminCachedEndDate = null;
     adminCacheTimestamp = null;
     adminCachePeriod = null;
-    reportMonthsLoaded = {};
     updateDataLoadedRange();
 
     // Reset custom date ranges
@@ -9074,7 +9073,11 @@ window.showLoginError = showLoginError;
 
 // --- Monthly Report ---
 var reportChannel = 'all';
-var reportMonthsLoaded = {};
+var reportCharts = [];
+function destroyReportCharts() {
+    reportCharts.forEach(function(c) { if (c) c.destroy(); });
+    reportCharts = [];
+}
 
 function setReportChannel(channel) {
     reportChannel = channel;
@@ -9127,15 +9130,15 @@ async function generateReport() {
         document.getElementById('reportContent').innerHTML = '<div class="report-placeholder"><i class="fas fa-chart-bar"></i><p>Select a service month to generate the report</p></div>';
         return;
     }
-    if (!reportMonthsLoaded[monthVal]) {
+    var parts = monthVal.split('-');
+    var monthStart = parts[0] + '-' + parts[1] + '-01';
+    var lastDay = new Date(parseInt(parts[0]), parseInt(parts[1]), 0).getDate();
+    var monthEnd = parts[0] + '-' + parts[1] + '-' + String(lastDay).padStart(2, '0');
+
+    if (!isDateRangeCovered(monthStart, monthEnd)) {
         document.getElementById('reportContent').innerHTML = '<div class="report-placeholder"><i class="fas fa-spinner fa-spin"></i><p>Loading data for ' + monthVal + '...</p></div>';
-        var parts = monthVal.split('-');
-        var monthStart = parts[0] + '-' + parts[1] + '-01';
-        var lastDay = new Date(parseInt(parts[0]), parseInt(parts[1]), 0).getDate();
-        var monthEnd = parts[0] + '-' + parts[1] + '-' + String(lastDay).padStart(2, '0');
         try {
             await loadAndMergeDateRange(monthStart, monthEnd, 'Loading report data...');
-            reportMonthsLoaded[monthVal] = true;
         } catch (err) {
             document.getElementById('reportContent').innerHTML = '<div class="report-placeholder"><i class="fas fa-exclamation-triangle"></i><p>Error loading data: ' + err.message + '</p></div>';
             return;
@@ -9143,6 +9146,7 @@ async function generateReport() {
     }
     document.getElementById('reportContent').innerHTML = '<div class="report-placeholder"><i class="fas fa-spinner fa-spin" style="font-size:2rem;color:var(--primary)"></i><p>Generating report...</p></div>';
     await new Promise(function(r) { setTimeout(r, 50); });
+    destroyReportCharts();
     var data = buildReportData(monthVal, reportChannel);
     var html = '';
     html += renderKPISummary(data);
@@ -9526,7 +9530,7 @@ function renderDailyBreakdownChart(data) {
         durationData.push(dailyDurations[d]);
     }
 
-    new Chart(canvas.getContext('2d'), {
+    reportCharts.push(new Chart(canvas.getContext('2d'), {
         type: 'bar',
         data: {
             labels: labels,
@@ -9551,6 +9555,7 @@ function renderDailyBreakdownChart(data) {
         },
         options: {
             responsive: true,
+            maintainAspectRatio: true,
             plugins: {
                 legend: { position: 'bottom' },
                 title: { display: true, text: 'Daily Activities & Duration', font: { size: 14 } }
@@ -9571,7 +9576,7 @@ function renderDailyBreakdownChart(data) {
                 }
             }
         }
-    });
+    }));
 }
 
 function renderTop10Subcategory(data) {
@@ -9614,7 +9619,7 @@ function renderTop10SubcatChart(data) {
     var top10 = sorted.slice(0, 10);
     var labels = top10.map(function(item) { return item.subCategory; });
     var values = top10.map(function(item) { return item.count; });
-    new Chart(canvas.getContext('2d'), {
+    reportCharts.push(new Chart(canvas.getContext('2d'), {
         type: 'bar',
         data: {
             labels: labels,
@@ -9627,6 +9632,8 @@ function renderTop10SubcatChart(data) {
             }]
         },
         options: {
+            responsive: true,
+            maintainAspectRatio: true,
             indexAxis: 'y',
             plugins: {
                 title: { display: true, text: 'Top 10 System by Cases' },
@@ -9637,7 +9644,7 @@ function renderTop10SubcatChart(data) {
                 y: { ticks: { autoSkip: false } }
             }
         }
-    });
+    }));
 }
 function renderTop10CategoryPath(data) {
     var pathMap = {};
@@ -9679,7 +9686,7 @@ function renderTop10CatPathChart(data) {
     }).sort(function(a, b) { return b.count - a.count; }).slice(0, 10);
     var labels = sorted.map(function(s) { return s.path; });
     var counts = sorted.map(function(s) { return s.count; });
-    new Chart(canvas.getContext('2d'), {
+    reportCharts.push(new Chart(canvas.getContext('2d'), {
         type: 'bar',
         data: {
             labels: labels,
@@ -9690,6 +9697,8 @@ function renderTop10CatPathChart(data) {
             }]
         },
         options: {
+            responsive: true,
+            maintainAspectRatio: true,
             indexAxis: 'y',
             plugins: {
                 title: { display: true, text: 'Top 10 Category by Cases' },
@@ -9700,7 +9709,7 @@ function renderTop10CatPathChart(data) {
                 y: { ticks: { autoSkip: false } }
             }
         }
-    });
+    }));
 }
 
 function renderCategoryBreakdown(data) {
@@ -9751,7 +9760,7 @@ function renderCategoryBreakdownChart(data) {
   const labels = sorted.map(function(r) { return r.category; });
   const casesData = sorted.map(function(r) { return r.count; });
   const durationData = sorted.map(function(r) { return parseFloat(r.duration.toFixed(2)); });
-  new Chart(canvas.getContext('2d'), {
+  reportCharts.push(new Chart(canvas.getContext('2d'), {
     type: 'bar',
     data: {
       labels: labels,
@@ -9776,6 +9785,7 @@ function renderCategoryBreakdownChart(data) {
     },
     options: {
       responsive: true,
+      maintainAspectRatio: true,
       plugins: {
         title: { display: true, text: 'Cases & Duration by Category' },
         legend: { position: 'bottom' }
@@ -9796,7 +9806,7 @@ function renderCategoryBreakdownChart(data) {
         }
       }
     }
-  });
+  }));
 }
 
 function renderTimePeriodBreakdown(data) {
@@ -9865,7 +9875,7 @@ function renderTimePeriodBreakdown(data) {
   const totalCases = periodStats.reduce((s,p) => s + p.count, 0);
   const totalDur = periodStats.reduce((s,p) => s + p.totalDuration, 0);
   let html = '<div class="report-section"><div class="report-section-title"><i class="fas fa-clock" style="color:#8b5cf6"></i> Cases &amp; Duration by Time Period</div>';
-  html += '<div class="report-table-wrapper"><table class="report-table"><thead><tr><th>Time Period</th><th class="num">Cases</th><th class="num">Total Duration (min)</th><th class="num">Avg Duration (min)</th><th class="num">% of Total</th></tr></thead><tbody>';
+  html += '<div class="report-table-wrapper"><table class="report-table"><thead><tr><th>Time Period</th><th class="num">Activities</th><th class="num">Total Duration (min)</th><th class="num">Avg Duration (min)</th><th class="num">% of Total</th></tr></thead><tbody>';
   periodStats.forEach(ps => {
     const avg = ps.count > 0 ? (ps.totalDuration / ps.count) : 0;
     const pct = totalCases > 0 ? ((ps.count / totalCases) * 100) : 0;
@@ -9978,7 +9988,7 @@ function renderHourlyBreakdownChart(data) {
         durationData.push(hourlyDurations[h] || 0);
     }
 
-    new Chart(canvas.getContext('2d'), {
+    reportCharts.push(new Chart(canvas.getContext('2d'), {
         type: 'bar',
         data: {
             labels: labels,
@@ -10003,6 +10013,7 @@ function renderHourlyBreakdownChart(data) {
         },
         options: {
             responsive: true,
+            maintainAspectRatio: true,
             plugins: {
                 legend: { position: 'bottom' },
                 title: { display: true, text: 'Hourly Activities & Duration', font: { size: 14 } }
@@ -10023,7 +10034,7 @@ function renderHourlyBreakdownChart(data) {
                 }
             }
         }
-    });
+    }));
 }
 function cleanCategoryPath(category, subcategory, subject) {
     var cat = category || 'Unknown';
