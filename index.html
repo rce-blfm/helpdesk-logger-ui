@@ -3921,15 +3921,26 @@ function formatLoadedRangeDisplay(rangeEl, prefix) {
         return sDay + ' ' + sMonth + ' ' + sYear + ' - ' + eDay + ' ' + eMonth + ' ' + eYear;
     }
 
-    if (!loadedRanges || loadedRanges.length === 0) {
+    if (!adminCases || adminCases.length === 0) {
         rangeEl.innerHTML = '';
         return;
     }
 
-    // Outer range: first interval start to last interval end
-    var outerStart = loadedRanges[0].start;
-    var outerEnd = loadedRanges[loadedRanges.length - 1].end;
-    var rangeText = formatDateRange(outerStart, outerEnd);
+    // Derive actual data range from adminCases createDate
+    var minDate = null, maxDate = null;
+    adminCases.forEach(function(c) {
+        if (!c.createDate) return;
+        var d = c.createDate.slice(0, 10);
+        if (!minDate || d < minDate) minDate = d;
+        if (!maxDate || d > maxDate) maxDate = d;
+    });
+
+    if (!minDate || !maxDate) {
+        rangeEl.innerHTML = '';
+        return;
+    }
+
+    var rangeText = formatDateRange(minDate, maxDate);
 
     var html = prefix + ' ' + rangeText;
 
@@ -9106,8 +9117,9 @@ function setReportChannel(channel) {
 }
 
 function initReportMonth() {
+    // Only initialize if no month is selected yet
     var input = document.getElementById('reportMonth');
-    if (input) input.value = '';
+    if (input && input.value) return;
 }
 
 /**
