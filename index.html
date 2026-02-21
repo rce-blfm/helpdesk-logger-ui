@@ -6474,6 +6474,28 @@ function changePageSize(size) {
     renderPaginatedCaseList();
 }
 
+/**
+ * Shared filtering function used by both Dashboard updateStats() and Admin filterAndRenderAdminCases().
+ * Single source of truth for root case filtering by date range and channels.
+ * @param {Array} allCases - The full set of cases to filter from
+ * @param {Object} dateRange - Object with start and end Date properties
+ * @param {Array} channels - Array of channel strings to include
+ * @returns {Array} Filtered root cases
+ */
+function getFilteredRootCases(allCases, dateRange, channels) {
+    var rootCases = allCases.filter(function(c) { return c.isNewJob === 'Y'; });
+    return rootCases.filter(function(root) {
+        if (!channels.includes(root.channel)) return false;
+        var relatedCases = allCases.filter(function(c) {
+            return c.followUpJobId === root.jobId || c.jobId === root.jobId;
+        });
+        return relatedCases.some(function(c) {
+            var cDate = new Date(c.createDate);
+            return cDate >= dateRange.start && cDate <= dateRange.end;
+        });
+    });
+}
+
 function updateStats() {
     if (!currentUser) return;
 
@@ -6495,24 +6517,8 @@ function updateStats() {
         myCases = cases.filter(c => c.createdBy === currentUser.name);
     }
 
-    const rootCases = myCases.filter(c => c.isNewJob === 'Y');
-    const range = getDateRange();
-
-    // Filter by date range using SAME logic as applyFiltersInternal and Admin filterAndRenderAdminCases
-    // Check if ANY case in the group (original + follow-ups) falls within the date range
-    // Also filter by selected channels - SINGLE SOURCE OF TRUTH for date filtering
-    const rootsInRange = rootCases.filter(root => {
-        // Channel filter
-        if (!selectedChannels.includes(root.channel)) return false;
-
-        // Period filter: check if ANY case in the group falls within the date range
-        const relatedCases = myCases.filter(c => c.followUpJobId === root.jobId || c.jobId === root.jobId);
-        const anyInPeriod = relatedCases.some(c => {
-            const cDate = new Date(c.createDate);
-            return cDate >= range.start && cDate <= range.end;
-        });
-        return anyInPeriod;
-    });
+    // Use shared filtering function for consistent results across Dashboard and Admin
+    const rootsInRange = getFilteredRootCases(myCases, getDateRange(), selectedChannels);
 
     let pendingCount = 0, escalatedCount = 0, resolvedCount = 0;
     rootsInRange.forEach(root => {
@@ -8409,26 +8415,8 @@ function filterAndRenderAdminCases() {
         baseCases = adminCases.filter(c => c.worksheet === selectedColleague);
     }
 
-    // Apply date filter - same logic as Dashboard's applyFiltersInternal
-    // Filter root cases and check if ANY case in the group (original + follow-ups) falls within date range
-    const rootCases = baseCases.filter(c => c.isNewJob === 'Y');
-
-    adminFilteredCases = rootCases.filter(root => {
-        // Channel filter - same as Dashboard's updateStats() which filters by selectedChannels
-        // Only include cases with valid channels (Agency, Broker, Banca)
-        if (!VALID_CHANNELS.includes(root.channel)) return false;
-
-        // Get all related cases (original + follow-ups)
-        const relatedCases = baseCases.filter(c => c.followUpJobId === root.jobId || c.jobId === root.jobId);
-
-        // Period filter: check if ANY case in the group falls within the date range
-        const anyInPeriod = relatedCases.some(c => {
-            const cDate = new Date(c.createDate);
-            return cDate >= range.start && cDate <= range.end;
-        });
-
-        return anyInPeriod;
-    });
+    // Use shared filtering function for consistent results across Dashboard and Admin
+    adminFilteredCases = getFilteredRootCases(baseCases, range, VALID_CHANNELS);
 
     // Also include follow-up cases that belong to filtered root cases (for follow-up count display)
     const filteredRootJobIds = new Set(adminFilteredCases.map(c => c.jobId));
