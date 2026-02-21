@@ -9079,6 +9079,18 @@ function destroyReportCharts() {
     reportCharts = [];
 }
 
+var reportResizeTimeout;
+window.addEventListener('resize', function() {
+    clearTimeout(reportResizeTimeout);
+    reportResizeTimeout = setTimeout(function() {
+        reportCharts.forEach(function(chart) {
+            if (chart && chart.canvas) {
+                chart.resize();
+            }
+        });
+    }, 200);
+});
+
 function setReportChannel(channel) {
     reportChannel = channel;
     document.querySelectorAll('.report-channel-tab').forEach(function(t) {
@@ -9482,7 +9494,7 @@ function renderDailyBreakdown(data) {
     var totalAvg = totalActivities > 0 ? (totalDuration / totalActivities) : 0;
     html += '<tr style="font-weight:bold;background:var(--bg-tertiary);"><td colspan="2">Total</td><td class="num">' + fmtInt(totalActivities) + '</td><td class="num">' + fmtInt(totalDuration) + '</td><td class="num">' + fmtDec(totalAvg) + '</td></tr>';
     html += '</tbody></table></div>';
-    html += '<div style="max-width:100%;margin:18px auto 0"><canvas id="dailyBreakdownChart"></canvas></div>';
+    html += '<div style="width:100%;margin:18px auto 0;position:relative"><canvas id="dailyBreakdownChart"></canvas></div>';
     html += '</div>';
     return html;
 }
@@ -9599,7 +9611,7 @@ function renderTop10Subcategory(data) {
         html += '<tr><td>' + (idx + 1) + '</td><td>' + item.subCategory + '</td><td class="num">' + fmtInt(item.count) + '</td><td class="num">' + fmtInt(item.totalDuration) + '</td><td class="num">' + fmtDec(avg) + '</td></tr>';
     });
     html += '</tbody></table></div>';
-    html += '<div style="max-width:100%;margin:18px auto 0"><canvas id="top10SubcatChart"></canvas></div>';
+    html += '<div style="width:100%;margin:18px auto 0;position:relative"><canvas id="top10SubcatChart"></canvas></div>';
     html += '</div>';
     return html;
 }
@@ -9666,7 +9678,7 @@ function renderTop10CategoryPath(data) {
         html += '<tr><td>' + (i + 1) + '</td><td>' + item.path + '</td><td class="num">' + fmtInt(item.count) + '</td><td class="num">' + fmtInt(item.totalDuration) + '</td><td class="num">' + fmtDec(avg) + '</td></tr>';
     });
     html += '</tbody></table></div>';
-    html += '<div style="max-width:100%;margin:18px auto 0"><canvas id="top10CatPathChart"></canvas></div>';
+    html += '<div style="width:100%;margin:18px auto 0;position:relative"><canvas id="top10CatPathChart"></canvas></div>';
     html += '</div>';
     return html;
 }
@@ -9738,7 +9750,7 @@ function renderCategoryBreakdown(data) {
   const totalAvg = totalCases > 0 ? (totalDuration / totalCases) : 0;
   html += '<tr class="total-row"><td>Total</td><td class="num">' + fmtInt(totalCases) + '</td><td class="num">' + fmtInt(totalDuration) + '</td><td class="num">' + fmtDec(totalAvg) + '</td><td class="num">100.0%</td></tr>';
   html += '</tbody></table></div>';
-  html += '<div style="max-width:100%;margin:18px auto 0"><canvas id="categoryBreakdownChart"></canvas></div>';
+  html += '<div style="width:100%;margin:18px auto 0;position:relative"><canvas id="categoryBreakdownChart"></canvas></div>';
   html += '</div>';
   return html;
 }
@@ -9810,71 +9822,99 @@ function renderCategoryBreakdownChart(data) {
 }
 
 function renderTimePeriodBreakdown(data) {
+  function floor30(mins) { return Math.floor(mins / 30) * 30; }
+  function ceil30(mins) { return Math.ceil(mins / 30) * 30; }
+  function minsToHHMM(mins) {
+    var h = Math.floor(mins / 60);
+    var m = mins % 60;
+    return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+  }
+  var monthVal = document.getElementById('reportMonth').value;
+  var monthPrefix = monthVal + '-';
   const roots = data.roots || [];
-  // First pass: find actual min/max hours for weekdays and weekends
-  let weekdayMinHour = Infinity, weekdayMaxHour = -Infinity;
-  let weekendMinHour = Infinity, weekendMaxHour = -Infinity;
-  let hasWeekday = false, hasWeekend = false;
   const parsed = [];
-  roots.forEach(root => {
-    const sdt = root.startDateTime || '';
-    const tPart = sdt.indexOf('T') >= 0 ? sdt.split('T')[1] : '';
-    const parts = tPart.split(':');
-    if (parts.length < 2) return;
-    const hour = parseInt(parts[0], 10);
-    if (isNaN(hour)) return;
-    const cd = root.createDate || '';
-    const dateObj = new Date(cd);
-    if (isNaN(dateObj.getTime())) return;
-    const dow = dateObj.getDay();
-    const isWeekend = (dow === 0 || dow === 6);
-    const dur = getGroupDuration(root);
-    parsed.push({hour, isWeekend, dur});
-    if (isWeekend) {
-      hasWeekend = true;
-      if (hour < weekendMinHour) weekendMinHour = hour;
-      if (hour > weekendMaxHour) weekendMaxHour = hour;
-    } else {
-      hasWeekday = true;
-      if (hour < weekdayMinHour) weekdayMinHour = hour;
-      if (hour > weekdayMaxHour) weekdayMaxHour = hour;
-    }
-  });
-  // Build dynamic periods
-  const periods = [];
-  if (hasWeekday) {
-    const p1Start = Math.min(weekdayMinHour, 9);
-    const p1End = 17;
-    const p2Start = 18;
-    const p2End = Math.max(weekdayMaxHour, 23);
-    periods.push({name: 'Mon - Fri ' + String(p1Start).padStart(2,'0') + ':00 - 18:00', startH: p1Start, endH: p1End, weekday: true});
-    periods.push({name: 'Mon - Fri 18:00 - ' + String(p2End).padStart(2,'0') + ':59', startH: p2Start, endH: p2End, weekday: true});
-  }
-  if (hasWeekend) {
-    const wStart = Math.min(weekendMinHour, 9);
-    const wEnd = Math.max(weekendMaxHour, 23);
-    periods.push({name: 'Weekend ' + String(wStart).padStart(2,'0') + ':00 - ' + String(wEnd).padStart(2,'0') + ':59', startH: wStart, endH: wEnd, weekday: false});
-  }
-  if (periods.length === 0) {
-    periods.push({name: 'Mon - Fri 09:00 - 18:00', startH: 9, endH: 17, weekday: true});
-    periods.push({name: 'Mon - Fri 18:00 - 23:59', startH: 18, endH: 23, weekday: true});
-    periods.push({name: 'Weekend 09:00 - 23:59', startH: 9, endH: 23, weekday: false});
-  }
-  const periodStats = periods.map(p => ({name:p.name, startH:p.startH, endH:p.endH, weekday:p.weekday, count:0, totalDuration:0}));
-  // Second pass: assign each root case to a period
-  parsed.forEach(({hour, isWeekend, dur}) => {
-    for (let i = 0; i < periodStats.length; i++) {
-      const ps = periodStats[i];
-      if (isWeekend && !ps.weekday && hour >= ps.startH && hour <= ps.endH) {
-        ps.count++; ps.totalDuration += dur; break;
-      } else if (!isWeekend && ps.weekday && hour >= ps.startH && hour <= ps.endH) {
-        ps.count++; ps.totalDuration += dur; break;
+  var weekdayTimes = [];
+  var weekendTimes = [];
+  var seenIds = {};
+  // First pass: collect all activity times
+  roots.forEach(function(root) {
+    var related = getRelatedCases(root);
+    related.forEach(function(c) {
+      var caseKey = c.jobId + '|' + (c.createDate || '') + '|' + (c.durationMins || 0);
+      if (seenIds[caseKey]) return;
+      seenIds[caseKey] = true;
+      if (!c.createDate || c.createDate.indexOf(monthPrefix) !== 0) return;
+      const sdt = c.startDateTime || '';
+      const tPart = sdt.indexOf('T') >= 0 ? sdt.split('T')[1] : '';
+      const parts = tPart.split(':');
+      if (parts.length < 2) return;
+      const hour = parseInt(parts[0], 10);
+      const minute = parseInt(parts[1], 10);
+      if (isNaN(hour) || isNaN(minute)) return;
+      const totalMins = hour * 60 + minute;
+      const cd = c.createDate || '';
+      const dateObj = new Date(cd);
+      if (isNaN(dateObj.getTime())) return;
+      const dow = dateObj.getDay();
+      const isWeekend = (dow === 0 || dow === 6);
+      const dur = parseInt(c.durationMins) || 0;
+      parsed.push({totalMins: totalMins, isWeekend: isWeekend, dur: dur});
+      if (isWeekend) {
+        weekendTimes.push(totalMins);
+      } else {
+        weekdayTimes.push(totalMins);
       }
+    });
+  });
+  // Compute boundaries
+  // Row 1: Mon - Fri [START] - 18:00 (weekday times < 1080)
+  var weekdayAM = weekdayTimes.filter(function(t) { return t < 1080; });
+  var row1Start = 540; // default 09:00
+  if (weekdayAM.length > 0) {
+    var minAM = Math.min.apply(null, weekdayAM);
+    row1Start = Math.min(540, floor30(minAM));
+  }
+  // Row 2: Mon - Fri 18:00 - [END] (weekday times >= 1080)
+  var weekdayPM = weekdayTimes.filter(function(t) { return t >= 1080; });
+  var row2End = 1320; // default 22:00
+  if (weekdayPM.length > 0) {
+    var maxPM = Math.max.apply(null, weekdayPM);
+    row2End = Math.max(1320, ceil30(maxPM));
+  }
+  // Row 3: Weekend [START] - [END]
+  var row3Start = 540; // default 09:00
+  var row3End = 1140; // default 19:00
+  if (weekendTimes.length > 0) {
+    var minWE = Math.min.apply(null, weekendTimes);
+    var maxWE = Math.max.apply(null, weekendTimes);
+    row3Start = Math.min(540, floor30(minWE));
+    row3End = Math.max(1140, ceil30(maxWE));
+  }
+  // Build period labels and stats
+  var periodStats = [
+    {name: 'Mon - Fri ' + minsToHHMM(row1Start) + ' - 18:00', weekday: true, pmPeriod: false, count: 0, totalDuration: 0},
+    {name: 'Mon - Fri 18:00 - ' + minsToHHMM(row2End), weekday: true, pmPeriod: true, count: 0, totalDuration: 0},
+    {name: 'Weekend ' + minsToHHMM(row3Start) + ' - ' + minsToHHMM(row3End), weekday: false, pmPeriod: false, count: 0, totalDuration: 0}
+  ];
+  // Second pass: assign each activity to a period
+  parsed.forEach(function(item) {
+    if (item.isWeekend) {
+      // Row 3: Weekend
+      periodStats[2].count++;
+      periodStats[2].totalDuration += item.dur;
+    } else if (item.totalMins < 1080) {
+      // Row 1: Weekday before 18:00
+      periodStats[0].count++;
+      periodStats[0].totalDuration += item.dur;
+    } else {
+      // Row 2: Weekday 18:00+
+      periodStats[1].count++;
+      periodStats[1].totalDuration += item.dur;
     }
   });
   const totalCases = periodStats.reduce((s,p) => s + p.count, 0);
   const totalDur = periodStats.reduce((s,p) => s + p.totalDuration, 0);
-  let html = '<div class="report-section"><div class="report-section-title"><i class="fas fa-clock" style="color:#8b5cf6"></i> Cases &amp; Duration by Time Period</div>';
+  let html = '<div class="report-section"><div class="report-section-title"><i class="fas fa-clock" style="color:#8b5cf6"></i> Activities &amp; Duration by Time Period</div>';
   html += '<div class="report-table-wrapper"><table class="report-table"><thead><tr><th>Time Period</th><th class="num">Activities</th><th class="num">Total Duration (min)</th><th class="num">Avg Duration (min)</th><th class="num">% of Total</th></tr></thead><tbody>';
   periodStats.forEach(ps => {
     const avg = ps.count > 0 ? (ps.totalDuration / ps.count) : 0;
@@ -9941,7 +9981,7 @@ function renderHourlyBreakdown(data) {
     var totalAvg = totalActivities > 0 ? (totalDuration / totalActivities) : 0;
     html += '<tr style="font-weight:bold;background:var(--bg-tertiary);"><td>Total</td><td class="num">' + fmtInt(totalActivities) + '</td><td class="num">' + fmtInt(totalDuration) + '</td><td class="num">' + fmtDec(totalAvg) + '</td></tr>';
     html += '</tbody></table></div>';
-    html += '<div style="max-width:100%;margin:18px auto 0"><canvas id="hourlyBreakdownChart"></canvas></div>';
+    html += '<div style="width:100%;margin:18px auto 0;position:relative"><canvas id="hourlyBreakdownChart"></canvas></div>';
     html += '</div>';
     return html;
 }
