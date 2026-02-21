@@ -4219,6 +4219,7 @@ function performLogoutReset() {
     helpdeskUsers = [];
 
     // Reset cache metadata
+    reportMonthsLoaded = {};
     adminCachedStartDate = null;
     adminCachedEndDate = null;
     adminCacheTimestamp = null;
@@ -9073,6 +9074,7 @@ window.showLoginError = showLoginError;
 
 // --- Monthly Report ---
 var reportChannel = 'all';
+var reportMonthsLoaded = {};
 var reportCharts = [];
 function destroyReportCharts() {
     reportCharts.forEach(function(c) { if (c) c.destroy(); });
@@ -9147,10 +9149,11 @@ async function generateReport() {
     var lastDay = new Date(parseInt(parts[0]), parseInt(parts[1]), 0).getDate();
     var monthEnd = parts[0] + '-' + parts[1] + '-' + String(lastDay).padStart(2, '0');
 
-    if (!isDateRangeCovered(monthStart, monthEnd)) {
+    if (!reportMonthsLoaded[monthVal]) {
         document.getElementById('reportContent').innerHTML = '<div class="report-placeholder"><i class="fas fa-spinner fa-spin"></i><p>Loading data for ' + monthVal + '...</p></div>';
         try {
             await loadAndMergeDateRange(monthStart, monthEnd, 'Loading report data...');
+            reportMonthsLoaded[monthVal] = true;
         } catch (err) {
             document.getElementById('reportContent').innerHTML = '<div class="report-placeholder"><i class="fas fa-exclamation-triangle"></i><p>Error loading data: ' + err.message + '</p></div>';
             return;
