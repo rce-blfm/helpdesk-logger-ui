@@ -9126,17 +9126,18 @@ async function generateReport() {
     html += renderChannelPerformance(data);
     html += renderCaseStatusTable(data);
     html += renderDailyBreakdown(data);
+    html += renderHourlyBreakdown(data);
     html += renderTop10Subcategory(data);
     html += renderTop10CategoryPath(data);
     html += renderCategoryBreakdown(data);
     html += renderTimePeriodBreakdown(data);
     document.getElementById('reportContent').innerHTML = html;
-    renderCaseStatusDonut(data);
+
     renderDailyBreakdownChart(data);
+    renderHourlyBreakdownChart(data);
     renderTop10SubcatChart(data);
     renderTop10CatPathChart(data);
     renderCategoryBreakdownChart(data);
-    renderTimePeriodChart(data);
 }
 
 // --- Report data computation helpers ---
@@ -9255,12 +9256,12 @@ function renderKPISummary(data) {
     html += '<div class="report-table-wrapper"><table class="report-table">';
     html += '<thead><tr><th>Metric</th><th class="num">Actual</th><th class="num">Target</th><th>Status</th></tr></thead>';
     html += '<tbody>';
-    html += '<tr><td>Total Cases (Root Only)</td><td class="num">' + data.totalCases.toLocaleString() + '</td><td class="num">-</td><td>-</td></tr>';
-    html += '<tr><td>Resolved Cases</td><td class="num">' + data.resolvedCount.toLocaleString() + '</td><td class="num">-</td><td>-</td></tr>';
-    html += '<tr><td>Escalated Cases</td><td class="num">' + data.escalatedCount.toLocaleString() + '</td><td class="num">-</td><td>-</td></tr>';
-    html += '<tr><td>Resolution Rate (%)</td><td class="num">' + resRate.toFixed(1) + '%</td><td class="num">&ge; ' + resTarget + '%</td><td>' + kpiStatus(resRate, resTarget, true) + '</td></tr>';
-    html += '<tr><td>Cases Resolved / Escalated &le; 20 mins (%)</td><td class="num">' + data.within20Pct.toFixed(1) + '%</td><td class="num">&ge; ' + w20Target + '%</td><td>' + kpiStatus(data.within20Pct, w20Target, true) + '</td></tr>';
-    html += '<tr><td>Average Resolution Time (mins)</td><td class="num">' + data.avgDuration.toFixed(1) + '</td><td class="num">&le; ' + avgTarget + ' mins</td><td>' + kpiStatus(data.avgDuration, avgTarget, false) + '</td></tr>';
+    html += '<tr><td>Total Cases (Root Only)</td><td class="num">' + fmtInt(data.totalCases) + '</td><td class="num">-</td><td>-</td></tr>';
+    html += '<tr><td>Resolved Cases</td><td class="num">' + fmtInt(data.resolvedCount) + '</td><td class="num">-</td><td>-</td></tr>';
+    html += '<tr><td>Escalated Cases</td><td class="num">' + fmtInt(data.escalatedCount) + '</td><td class="num">-</td><td>-</td></tr>';
+    html += '<tr><td>Resolution Rate (%)</td><td class="num">' + fmtDec(resRate) + '%</td><td class="num">&ge; ' + resTarget + '%</td><td>' + kpiStatus(resRate, resTarget, true) + '</td></tr>';
+    html += '<tr><td>Cases Resolved / Escalated &le; 20 mins (%)</td><td class="num">' + fmtDec(data.within20Pct) + '%</td><td class="num">&ge; ' + w20Target + '%</td><td>' + kpiStatus(data.within20Pct, w20Target, true) + '</td></tr>';
+    html += '<tr><td>Average Resolution Time (mins)</td><td class="num">' + fmtDec(data.avgDuration) + '</td><td class="num">&le; ' + avgTarget + ' mins</td><td>' + kpiStatus(data.avgDuration, avgTarget, false) + '</td></tr>';
     html += '</tbody></table></div></div>';
     return html;
 }
@@ -9295,14 +9296,17 @@ function renderChannelPerformance(data) {
     var html = '<div class="report-section">';
     html += '<div class="report-section-title"><i class="fas fa-columns" style="color:var(--info)"></i> Case Resolution Performance by Channel</div>';
     html += '<div class="report-table-wrapper"><table class="report-table">';
-    html += '<thead><tr><th>Channel</th>';
-    sourceGroups.forEach(function(s) { html += '<th class="num">' + s + '</th>'; });
+    html += '<thead><tr>';
+    html += '<th rowspan="2">Channel</th>';
+    html += '<th colspan="3" style="background:rgba(59,130,246,0.15);text-align:center">Source</th>';
+    html += '<th colspan="2" style="background:rgba(34,197,94,0.15);text-align:center">Cases</th>';
+    html += '<th colspan="4" style="background:rgba(249,115,22,0.15);text-align:center">Status</th>';
+    html += '<th colspan="5" style="background:rgba(139,92,246,0.15);text-align:center">Duration</th>';
+    html += '</tr><tr>';
+    html += '<th class="num">Call</th><th class="num">WhatsApp</th><th class="num">Others</th>';
     html += '<th class="num">Total</th><th class="num">Rate%</th>';
-    html += '<th class="num">Resolved</th><th class="num">%</th>';
-    html += '<th class="num">Escalated</th><th class="num">%</th>';
-    html += '<th class="num">&le;20m</th><th class="num">%</th>';
-    html += '<th class="num">&gt;20m</th><th class="num">%</th>';
-    html += '<th class="num">Avg Min</th>';
+    html += '<th class="num">Resolved</th><th class="num">%</th><th class="num">Escalated</th><th class="num">%</th>';
+    html += '<th class="num">&le;20m</th><th class="num">%</th><th class="num">&gt;20m</th><th class="num">%</th><th class="num">Avg Min</th>';
     html += '</tr></thead><tbody>';
 
     var grandTotal = data.totalCases;
@@ -9317,13 +9321,13 @@ function renderChannelPerformance(data) {
         var o20Pct = s.total > 0 ? (s.over20 / s.total * 100) : 0;
         var avgDur = s.total > 0 ? (s.totalDur / s.total) : 0;
         html += '<tr><td>' + ch + '</td>';
-        html += '<td class="num">' + s.call + '</td><td class="num">' + s.whatsapp + '</td><td class="num">' + s.others + '</td>';
-        html += '<td class="num">' + s.total + '</td><td class="num">' + ratePct.toFixed(1) + '%</td>';
-        html += '<td class="num">' + s.resolved + '</td><td class="num">' + resPct.toFixed(1) + '%</td>';
-        html += '<td class="num">' + s.escalated + '</td><td class="num">' + escPct.toFixed(1) + '%</td>';
-        html += '<td class="num">' + s.within20 + '</td><td class="num">' + w20Pct.toFixed(1) + '%</td>';
-        html += '<td class="num">' + s.over20 + '</td><td class="num">' + o20Pct.toFixed(1) + '%</td>';
-        html += '<td class="num">' + avgDur.toFixed(1) + '</td></tr>';
+        html += '<td class="num">' + fmtInt(s.call) + '</td><td class="num">' + fmtInt(s.whatsapp) + '</td><td class="num">' + fmtInt(s.others) + '</td>';
+        html += '<td class="num">' + fmtInt(s.total) + '</td><td class="num">' + fmtDec(ratePct) + '%</td>';
+        html += '<td class="num">' + fmtInt(s.resolved) + '</td><td class="num">' + fmtDec(resPct) + '%</td>';
+        html += '<td class="num">' + fmtInt(s.escalated) + '</td><td class="num">' + fmtDec(escPct) + '%</td>';
+        html += '<td class="num">' + fmtInt(s.within20) + '</td><td class="num">' + fmtDec(w20Pct) + '%</td>';
+        html += '<td class="num">' + fmtInt(s.over20) + '</td><td class="num">' + fmtDec(o20Pct) + '%</td>';
+        html += '<td class="num">' + fmtDec(avgDur) + '</td></tr>';
     });
 
     // Overall row
@@ -9336,13 +9340,13 @@ function renderChannelPerformance(data) {
     channels.forEach(function(ch) { totalCall += channelStats[ch].call; totalWA += channelStats[ch].whatsapp; totalOth += channelStats[ch].others; });
 
     html += '<tr class="total-row"><td>Overall</td>';
-    html += '<td class="num">' + totalCall + '</td><td class="num">' + totalWA + '</td><td class="num">' + totalOth + '</td>';
-    html += '<td class="num">' + data.totalCases + '</td><td class="num">100%</td>';
-    html += '<td class="num">' + data.resolvedCount + '</td><td class="num">' + oResPct.toFixed(1) + '%</td>';
-    html += '<td class="num">' + data.escalatedCount + '</td><td class="num">' + oEscPct.toFixed(1) + '%</td>';
-    html += '<td class="num">' + data.within20 + '</td><td class="num">' + oW20Pct.toFixed(1) + '%</td>';
-    html += '<td class="num">' + oOver20 + '</td><td class="num">' + oO20Pct.toFixed(1) + '%</td>';
-    html += '<td class="num">' + data.avgDuration.toFixed(1) + '</td></tr>';
+    html += '<td class="num">' + fmtInt(totalCall) + '</td><td class="num">' + fmtInt(totalWA) + '</td><td class="num">' + fmtInt(totalOth) + '</td>';
+    html += '<td class="num">' + fmtInt(data.totalCases) + '</td><td class="num">100%</td>';
+    html += '<td class="num">' + fmtInt(data.resolvedCount) + '</td><td class="num">' + fmtDec(oResPct) + '%</td>';
+    html += '<td class="num">' + fmtInt(data.escalatedCount) + '</td><td class="num">' + fmtDec(oEscPct) + '%</td>';
+    html += '<td class="num">' + fmtInt(data.within20) + '</td><td class="num">' + fmtDec(oW20Pct) + '%</td>';
+    html += '<td class="num">' + fmtInt(oOver20) + '</td><td class="num">' + fmtDec(oO20Pct) + '%</td>';
+    html += '<td class="num">' + fmtDec(data.avgDuration) + '</td></tr>';
 
     html += '</tbody></table></div></div>';
     return html;
@@ -9359,53 +9363,35 @@ function renderCaseStatusTable(data) {
         if (isGroupEscalated(root)) stats[ch].escalated++;
         else stats[ch].resolved++;
     });
-    var html = '<div class="report-section">';
-    html += '<div class="report-section-title"><i class="fas fa-clipboard-list" style="color:var(--warning)"></i> Case Status by Channel</div>';
-    html += '<div class="report-table-wrapper"><table class="report-table">';
-    html += '<thead><tr><th>Status</th>';
-    channels.forEach(function(ch) { html += '<th class="num">' + ch + '</th>'; });
-    html += '<th class="num">Total</th><th class="num">Rate%</th></tr></thead><tbody>';
     var totRes = 0, totEsc = 0;
     channels.forEach(function(ch) { totRes += stats[ch].resolved; totEsc += stats[ch].escalated; });
     var grand = totRes + totEsc;
-    // Resolved row
-    html += '<tr><td>Resolved</td>';
-    channels.forEach(function(ch) { html += '<td class="num">' + stats[ch].resolved + '</td>'; });
-    html += '<td class="num">' + totRes + '</td><td class="num">' + (grand > 0 ? (totRes/grand*100).toFixed(1) : '0.0') + '%</td></tr>';
-    // Escalated row
-    html += '<tr><td>Escalated</td>';
-    channels.forEach(function(ch) { html += '<td class="num">' + stats[ch].escalated + '</td>'; });
-    html += '<td class="num">' + totEsc + '</td><td class="num">' + (grand > 0 ? (totEsc/grand*100).toFixed(1) : '0.0') + '%</td></tr>';
-    // Total row
-    html += '<tr class="total-row"><td>Total</td>';
-    channels.forEach(function(ch) { html += '<td class="num">' + (stats[ch].resolved + stats[ch].escalated) + '</td>'; });
-    html += '<td class="num">' + grand + '</td><td class="num">100%</td></tr>';
+    var html = '<div class="report-section">';
+    html += '<div class="report-section-title"><i class="fas fa-clipboard-list" style="color:var(--warning)"></i> Case Status by Channel</div>';
+    html += '<div class="report-table-wrapper"><table class="report-table">';
+    html += '<thead><tr><th>Channel</th><th class="num">Resolved</th><th class="num">%</th><th class="num">Escalated</th><th class="num">%</th><th class="num">Total</th></tr></thead><tbody>';
+    channels.forEach(function(ch) {
+        var total = stats[ch].resolved + stats[ch].escalated;
+        var resPct = total > 0 ? (stats[ch].resolved / total * 100) : 0;
+        var escPct = total > 0 ? (stats[ch].escalated / total * 100) : 0;
+        html += '<tr><td>' + ch + '</td>';
+        html += '<td class="num">' + fmtInt(stats[ch].resolved) + '</td>';
+        html += '<td class="num">' + fmtDec(resPct) + '%</td>';
+        html += '<td class="num">' + fmtInt(stats[ch].escalated) + '</td>';
+        html += '<td class="num">' + fmtDec(escPct) + '%</td>';
+        html += '<td class="num">' + fmtInt(total) + '</td></tr>';
+    });
+    var overallResPct = grand > 0 ? (totRes / grand * 100) : 0;
+    var overallEscPct = grand > 0 ? (totEsc / grand * 100) : 0;
+    html += '<tr class="total-row"><td>Overall</td>';
+    html += '<td class="num">' + fmtInt(totRes) + '</td>';
+    html += '<td class="num">' + fmtDec(overallResPct) + '%</td>';
+    html += '<td class="num">' + fmtInt(totEsc) + '</td>';
+    html += '<td class="num">' + fmtDec(overallEscPct) + '%</td>';
+    html += '<td class="num">' + fmtInt(grand) + '</td></tr>';
     html += '</tbody></table></div>';
-    html += '<div style="max-width:320px;margin:18px auto 0"><canvas id="caseStatusDonut"></canvas></div>';
     html += '</div>';
     return html;
-}
-
-function renderCaseStatusDonut(data) {
-    var canvas = document.getElementById('caseStatusDonut');
-    if (!canvas) return;
-    var res = data.resolvedCount;
-    var esc = data.escalatedCount;
-    if (res === 0 && esc === 0) return;
-    new Chart(canvas, {
-        type: 'doughnut',
-        data: {
-            labels: ['Resolved', 'Escalated'],
-            datasets: [{ data: [res, esc], backgroundColor: ['#22c55e', '#ef4444'], borderWidth: 2 }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: { position: 'bottom' },
-                title: { display: true, text: 'Case Status Distribution', font: { size: 14 } }
-            }
-        }
-    });
 }
 
 
@@ -9464,11 +9450,11 @@ function renderDailyBreakdown(data) {
         var avg = count > 0 ? (dur / count) : 0;
         totalActivities += count;
         totalDuration += dur;
-        html += '<tr><td>' + dateStr + '</td><td>' + dayName + '</td><td class="num">' + count + '</td><td class="num">' + dur + '</td><td class="num">' + avg.toFixed(1) + '</td></tr>';
+        html += '<tr><td>' + dateStr + '</td><td>' + dayName + '</td><td class="num">' + fmtInt(count) + '</td><td class="num">' + fmtInt(dur) + '</td><td class="num">' + fmtDec(avg) + '</td></tr>';
     }
 
     var totalAvg = totalActivities > 0 ? (totalDuration / totalActivities) : 0;
-    html += '<tr style="font-weight:bold;background:var(--bg-tertiary);"><td colspan="2">Total</td><td class="num">' + totalActivities + '</td><td class="num">' + totalDuration + '</td><td class="num">' + totalAvg.toFixed(1) + '</td></tr>';
+    html += '<tr style="font-weight:bold;background:var(--bg-tertiary);"><td colspan="2">Total</td><td class="num">' + fmtInt(totalActivities) + '</td><td class="num">' + fmtInt(totalDuration) + '</td><td class="num">' + fmtDec(totalAvg) + '</td></tr>';
     html += '</tbody></table></div>';
     html += '<div style="max-width:700px;margin:18px auto 0"><canvas id="dailyBreakdownChart"></canvas></div>';
     html += '</div>';
@@ -9582,8 +9568,8 @@ function renderTop10Subcategory(data) {
     var html = '<div class="report-section"><div class="report-section-title"><i class="fas fa-tags" style="color:var(--primary)"></i> Top 10 System</div>';
     html += '<div class="report-table-wrapper"><table class="report-table"><thead><tr><th>Rank</th><th>Subcategory</th><th class="num">Cases</th><th class="num">Total Duration (min)</th><th class="num">Avg Duration (min)</th></tr></thead><tbody>';
     top10.forEach(function(item, idx) {
-        var avg = item.count > 0 ? (item.totalDuration / item.count).toFixed(1) : '0.0';
-        html += '<tr><td>' + (idx + 1) + '</td><td>' + item.subCategory + '</td><td class="num">' + item.count + '</td><td class="num">' + item.totalDuration + '</td><td class="num">' + avg + '</td></tr>';
+        var avg = item.count > 0 ? (item.totalDuration / item.count) : 0;
+        html += '<tr><td>' + (idx + 1) + '</td><td>' + item.subCategory + '</td><td class="num">' + fmtInt(item.count) + '</td><td class="num">' + fmtInt(item.totalDuration) + '</td><td class="num">' + fmtDec(avg) + '</td></tr>';
     });
     html += '</tbody></table></div>';
     html += '<div style="max-width:700px;margin:18px auto 0"><canvas id="top10SubcatChart"></canvas></div>';
@@ -9633,7 +9619,7 @@ function renderTop10SubcatChart(data) {
 function renderTop10CategoryPath(data) {
     var pathMap = {};
     (data.roots || []).forEach(function(root) {
-        var path = '[' + (root.category || 'Unknown') + '] ' + (root.subcategory || 'Unknown') + ' - ' + (root.subject || 'Unknown');
+        var path = cleanCategoryPath(root.category || '', root.subcategory || '', root.subject || '');
         if (!pathMap[path]) {
             pathMap[path] = { count: 0, totalDuration: 0 };
         }
@@ -9646,8 +9632,8 @@ function renderTop10CategoryPath(data) {
     var html = '<div class="report-section"><div class="report-section-title"><i class="fas fa-sitemap" style="color:var(--secondary)"></i> Top 10 Category</div>';
     html += '<div class="report-table-wrapper"><table class="report-table"><thead><tr><th>Rank</th><th>Category Path</th><th class="num">Cases</th><th class="num">Total Duration (min)</th><th class="num">Avg Duration (min)</th></tr></thead><tbody>';
     sorted.forEach(function(item, i) {
-        var avg = item.count > 0 ? (item.totalDuration / item.count).toFixed(1) : '0.0';
-        html += '<tr><td>' + (i + 1) + '</td><td>' + item.path + '</td><td class="num">' + item.count + '</td><td class="num">' + item.totalDuration.toFixed(1) + '</td><td class="num">' + avg + '</td></tr>';
+        var avg = item.count > 0 ? (item.totalDuration / item.count) : 0;
+        html += '<tr><td>' + (i + 1) + '</td><td>' + item.path + '</td><td class="num">' + fmtInt(item.count) + '</td><td class="num">' + fmtDec(item.totalDuration) + '</td><td class="num">' + fmtDec(avg) + '</td></tr>';
     });
     html += '</tbody></table></div>';
     html += '<div style="max-width:700px;margin:18px auto 0"><canvas id="top10CatPathChart"></canvas></div>';
@@ -9659,7 +9645,7 @@ function renderTop10CatPathChart(data) {
     if (!canvas) return;
     var pathMap = {};
     (data.roots || []).forEach(function(root) {
-        var path = '[' + (root.category || 'Unknown') + '] ' + (root.subcategory || 'Unknown') + ' - ' + (root.subject || 'Unknown');
+        var path = cleanCategoryPath(root.category || '', root.subcategory || '', root.subject || '');
         if (!pathMap[path]) {
             pathMap[path] = 0;
         }
@@ -9712,12 +9698,12 @@ function renderCategoryBreakdown(data) {
   let html = '<div class="report-section"><div class="report-section-title"><i class="fas fa-folder-open" style="color:var(--warning)"></i> Cases &amp; Duration by Category</div>';
   html += '<div class="report-table-wrapper"><table class="report-table"><thead><tr><th>Category</th><th class="num">Cases</th><th class="num">Total Duration (min)</th><th class="num">Avg Duration (min)</th><th class="num">% of Total Cases</th></tr></thead><tbody>';
   sorted.forEach(function(row) {
-    const avg = row.count > 0 ? (row.duration / row.count).toFixed(2) : '0.00';
-    const pct = totalCases > 0 ? ((row.count / totalCases) * 100).toFixed(1) : '0.0';
-    html += '<tr><td>' + row.category + '</td><td class="num">' + row.count + '</td><td class="num">' + row.duration.toFixed(2) + '</td><td class="num">' + avg + '</td><td class="num">' + pct + '%</td></tr>';
+    const avg = row.count > 0 ? (row.duration / row.count) : 0;
+    const pct = totalCases > 0 ? ((row.count / totalCases) * 100) : 0;
+    html += '<tr><td>' + row.category + '</td><td class="num">' + fmtInt(row.count) + '</td><td class="num">' + fmtDec(row.duration) + '</td><td class="num">' + fmtDec(avg) + '</td><td class="num">' + fmtDec(pct) + '%</td></tr>';
   });
-  const totalAvg = totalCases > 0 ? (totalDuration / totalCases).toFixed(2) : '0.00';
-  html += '<tr class="total-row"><td>Total</td><td class="num">' + totalCases + '</td><td class="num">' + totalDuration.toFixed(2) + '</td><td class="num">' + totalAvg + '</td><td class="num">100.0%</td></tr>';
+  const totalAvg = totalCases > 0 ? (totalDuration / totalCases) : 0;
+  html += '<tr class="total-row"><td>Total</td><td class="num">' + fmtInt(totalCases) + '</td><td class="num">' + fmtDec(totalDuration) + '</td><td class="num">' + fmtDec(totalAvg) + '</td><td class="num">100.0%</td></tr>';
   html += '</tbody></table></div>';
   html += '<div style="max-width:700px;margin:18px auto 0"><canvas id="categoryBreakdownChart"></canvas></div>';
   html += '</div>';
@@ -9791,14 +9777,14 @@ function renderCategoryBreakdownChart(data) {
 
 function renderTimePeriodBreakdown(data) {
   const roots = data.roots || [];
-  const periods = [
-    {name: 'Mon - Fri 09:00 - 18:00', startH: 9, endH: 17, weekday: true},
-    {name: 'Mon - Fri 18:00 - 23:59', startH: 18, endH: 23, weekday: true},
-    {name: 'Weekend 09:00 - 23:59', startH: 9, endH: 23, weekday: false}
-  ];
-  const periodStats = periods.map(p => ({name:p.name, startH:p.startH, endH:p.endH, weekday:p.weekday, count:0, totalDuration:0}));
+  // First pass: find actual min/max hours for weekdays and weekends
+  let weekdayMinHour = Infinity, weekdayMaxHour = -Infinity;
+  let weekendMinHour = Infinity, weekendMaxHour = -Infinity;
+  let hasWeekday = false, hasWeekend = false;
+  const parsed = [];
   roots.forEach(root => {
-    const sdt = root.startDateTime || ''; const tPart = sdt.indexOf('T') >= 0 ? sdt.split('T')[1] : '';
+    const sdt = root.startDateTime || '';
+    const tPart = sdt.indexOf('T') >= 0 ? sdt.split('T')[1] : '';
     const parts = tPart.split(':');
     if (parts.length < 2) return;
     const hour = parseInt(parts[0], 10);
@@ -9809,12 +9795,47 @@ function renderTimePeriodBreakdown(data) {
     const dow = dateObj.getDay();
     const isWeekend = (dow === 0 || dow === 6);
     const dur = getGroupDuration(root);
-    if (isWeekend && hour >= 9 && hour <= 23) {
-      periodStats[2].count++; periodStats[2].totalDuration += dur;
-    } else if (!isWeekend && hour >= 9 && hour <= 17) {
-      periodStats[0].count++; periodStats[0].totalDuration += dur;
-    } else if (!isWeekend && hour >= 18 && hour <= 23) {
-      periodStats[1].count++; periodStats[1].totalDuration += dur;
+    parsed.push({hour, isWeekend, dur});
+    if (isWeekend) {
+      hasWeekend = true;
+      if (hour < weekendMinHour) weekendMinHour = hour;
+      if (hour > weekendMaxHour) weekendMaxHour = hour;
+    } else {
+      hasWeekday = true;
+      if (hour < weekdayMinHour) weekdayMinHour = hour;
+      if (hour > weekdayMaxHour) weekdayMaxHour = hour;
+    }
+  });
+  // Build dynamic periods
+  const periods = [];
+  if (hasWeekday) {
+    const p1Start = Math.min(weekdayMinHour, 9);
+    const p1End = 17;
+    const p2Start = 18;
+    const p2End = Math.max(weekdayMaxHour, 23);
+    periods.push({name: 'Mon - Fri ' + String(p1Start).padStart(2,'0') + ':00 - 18:00', startH: p1Start, endH: p1End, weekday: true});
+    periods.push({name: 'Mon - Fri 18:00 - ' + String(p2End).padStart(2,'0') + ':59', startH: p2Start, endH: p2End, weekday: true});
+  }
+  if (hasWeekend) {
+    const wStart = Math.min(weekendMinHour, 9);
+    const wEnd = Math.max(weekendMaxHour, 23);
+    periods.push({name: 'Weekend ' + String(wStart).padStart(2,'0') + ':00 - ' + String(wEnd).padStart(2,'0') + ':59', startH: wStart, endH: wEnd, weekday: false});
+  }
+  if (periods.length === 0) {
+    periods.push({name: 'Mon - Fri 09:00 - 18:00', startH: 9, endH: 17, weekday: true});
+    periods.push({name: 'Mon - Fri 18:00 - 23:59', startH: 18, endH: 23, weekday: true});
+    periods.push({name: 'Weekend 09:00 - 23:59', startH: 9, endH: 23, weekday: false});
+  }
+  const periodStats = periods.map(p => ({name:p.name, startH:p.startH, endH:p.endH, weekday:p.weekday, count:0, totalDuration:0}));
+  // Second pass: assign each root case to a period
+  parsed.forEach(({hour, isWeekend, dur}) => {
+    for (let i = 0; i < periodStats.length; i++) {
+      const ps = periodStats[i];
+      if (isWeekend && !ps.weekday && hour >= ps.startH && hour <= ps.endH) {
+        ps.count++; ps.totalDuration += dur; break;
+      } else if (!isWeekend && ps.weekday && hour >= ps.startH && hour <= ps.endH) {
+        ps.count++; ps.totalDuration += dur; break;
+      }
     }
   });
   const totalCases = periodStats.reduce((s,p) => s + p.count, 0);
@@ -9822,59 +9843,186 @@ function renderTimePeriodBreakdown(data) {
   let html = '<div class="report-section"><div class="report-section-title"><i class="fas fa-clock" style="color:#8b5cf6"></i> Cases &amp; Duration by Time Period</div>';
   html += '<div class="report-table-wrapper"><table class="report-table"><thead><tr><th>Time Period</th><th class="num">Cases</th><th class="num">Total Duration (min)</th><th class="num">Avg Duration (min)</th><th class="num">% of Total</th></tr></thead><tbody>';
   periodStats.forEach(ps => {
-    const avg = ps.count > 0 ? (ps.totalDuration / ps.count).toFixed(1) : '0.0';
-    const pct = totalCases > 0 ? ((ps.count / totalCases) * 100).toFixed(1) : '0.0';
-    html += '<tr><td>' + ps.name + '</td><td class="num">' + ps.count + '</td><td class="num">' + ps.totalDuration.toFixed(1) + '</td><td class="num">' + avg + '</td><td class="num">' + pct + '%</td></tr>';
+    const avg = ps.count > 0 ? (ps.totalDuration / ps.count) : 0;
+    const pct = totalCases > 0 ? ((ps.count / totalCases) * 100) : 0;
+    html += '<tr><td>' + ps.name + '</td><td class="num">' + fmtInt(ps.count) + '</td><td class="num">' + fmtDec(ps.totalDuration) + '</td><td class="num">' + fmtDec(avg) + '</td><td class="num">' + fmtDec(pct) + '%</td></tr>';
   });
-  const totalAvg = totalCases > 0 ? (totalDur / totalCases).toFixed(1) : '0.0';
-  html += '<tr class="total-row"><td>Total</td><td class="num">' + totalCases + '</td><td class="num">' + totalDur.toFixed(1) + '</td><td class="num">' + totalAvg + '</td><td class="num">100.0%</td></tr>';
+  const totalAvg = totalCases > 0 ? (totalDur / totalCases) : 0;
+  html += '<tr class="total-row"><td>Total</td><td class="num">' + fmtInt(totalCases) + '</td><td class="num">' + fmtDec(totalDur) + '</td><td class="num">' + fmtDec(totalAvg) + '</td><td class="num">100.0%</td></tr>';
   html += '</tbody></table></div>';
-  html += '<div style="max-width:500px;margin:18px auto 0"><canvas id="timePeriodChart"></canvas></div>';
   html += '</div>';
   return html;
 }
 
-function renderTimePeriodChart(data) {
-  const canvas = document.getElementById('timePeriodChart');
-  if (!canvas) return;
-  const roots = data.roots || [];
-  const counts = [0,0,0];
-  roots.forEach(root => {
-    const sdt = root.startDateTime || ''; const tPart = sdt.indexOf('T') >= 0 ? sdt.split('T')[1] : '';
-    const parts = tPart.split(':');
-    if (parts.length < 2) return;
-    const hour = parseInt(parts[0], 10);
-    if (isNaN(hour)) return;
-    const cd = root.createDate || '';
-    const dateObj = new Date(cd);
-    if (isNaN(dateObj.getTime())) return;
-    const dow = dateObj.getDay();
-    const isWeekend = (dow === 0 || dow === 6);
-    if (isWeekend && hour >= 9 && hour <= 23) {
-      counts[2]++;
-    } else if (!isWeekend && hour >= 9 && hour <= 17) {
-      counts[0]++;
-    } else if (!isWeekend && hour >= 18 && hour <= 23) {
-      counts[1]++;
+function renderHourlyBreakdown(data) {
+    var monthVal = document.getElementById('reportMonth').value;
+    var monthPrefix = monthVal + '-';
+
+    var seenIds = {};
+    var hourlyCounts = {};
+    var hourlyDurations = {};
+
+    data.roots.forEach(function(root) {
+        var related = getRelatedCases(root);
+        related.forEach(function(c) {
+            var caseKey = c.jobId + '|' + (c.createDate || '') + '|' + (c.durationMins || 0) + '|' + (c.channel || '') + '|' + (c.followUpJobId || '');
+            if (seenIds[caseKey]) return;
+            seenIds[caseKey] = true;
+            if (c.createDate && c.createDate.indexOf(monthPrefix) === 0) {
+                if (c.startDateTime && c.startDateTime.length >= 16) {
+                    var hour = parseInt(c.startDateTime.substring(11, 13));
+                    if (!isNaN(hour)) {
+                        hourlyCounts[hour] = (hourlyCounts[hour] || 0) + 1;
+                        hourlyDurations[hour] = (hourlyDurations[hour] || 0) + (parseInt(c.durationMins) || 0);
+                    }
+                }
+            }
+        });
+    });
+
+    var hours = Object.keys(hourlyCounts).map(Number).sort(function(a, b) { return a - b; });
+    var minHour = hours.length > 0 ? hours[0] : 0;
+    var maxHour = hours.length > 0 ? hours[hours.length - 1] : 23;
+
+    var totalActivities = 0;
+    var totalDuration = 0;
+
+    var html = '<div class="report-section">';
+    html += '<div class="report-section-title"><i class="fas fa-clock" style="color:var(--secondary)"></i> Hourly Activity Breakdown</div>';
+    html += '<div style="color:var(--text-secondary);font-size:0.95em;margin-bottom:10px;">Includes all case activities (new cases and follow-ups)</div>';
+    html += '<div class="report-table-wrapper"><table class="report-table">';
+    html += '<thead><tr><th>Hour</th><th class="num">Activities</th><th class="num">Total Duration (min)</th><th class="num">Avg Duration (min)</th></tr></thead>';
+    html += '<tbody>';
+
+    for (var h = minHour; h <= maxHour; h++) {
+        var label = (h < 10 ? '0' + h : h) + ':00';
+        var count = hourlyCounts[h] || 0;
+        var dur = hourlyDurations[h] || 0;
+        var avg = count > 0 ? (dur / count) : 0;
+        totalActivities += count;
+        totalDuration += dur;
+        html += '<tr><td>' + label + '</td><td class="num">' + fmtInt(count) + '</td><td class="num">' + fmtInt(dur) + '</td><td class="num">' + fmtDec(avg) + '</td></tr>';
     }
-  });
-  new Chart(canvas.getContext('2d'), {
-    type: 'doughnut',
-    data: {
-      labels: ['Mon - Fri 09:00 - 18:00','Mon - Fri 18:00 - 23:59','Weekend 09:00 - 23:59'],
-      datasets: [{
-        data: counts,
-        backgroundColor: ['#3b82f6','#8b5cf6','#f59e0b']
-      }]
-    },
-    options: {
-      responsive: true,
-      plugins: {
-        title: { display: true, text: 'Cases by Time Period' },
-        legend: { position: 'bottom' }
-      }
+
+    var totalAvg = totalActivities > 0 ? (totalDuration / totalActivities) : 0;
+    html += '<tr style="font-weight:bold;background:var(--bg-tertiary);"><td>Total</td><td class="num">' + fmtInt(totalActivities) + '</td><td class="num">' + fmtInt(totalDuration) + '</td><td class="num">' + fmtDec(totalAvg) + '</td></tr>';
+    html += '</tbody></table></div>';
+    html += '<div style="max-width:700px;margin:18px auto 0"><canvas id="hourlyBreakdownChart"></canvas></div>';
+    html += '</div>';
+    return html;
+}
+
+function renderHourlyBreakdownChart(data) {
+    var canvas = document.getElementById('hourlyBreakdownChart');
+    if (!canvas) return;
+
+    var monthVal = document.getElementById('reportMonth').value;
+    var monthPrefix = monthVal + '-';
+
+    var seenIds = {};
+    var hourlyCounts = {};
+    var hourlyDurations = {};
+
+    data.roots.forEach(function(root) {
+        var related = getRelatedCases(root);
+        related.forEach(function(c) {
+            var caseKey = c.jobId + '|' + (c.createDate || '') + '|' + (c.durationMins || 0) + '|' + (c.channel || '') + '|' + (c.followUpJobId || '');
+            if (seenIds[caseKey]) return;
+            seenIds[caseKey] = true;
+            if (c.createDate && c.createDate.indexOf(monthPrefix) === 0) {
+                if (c.startDateTime && c.startDateTime.length >= 16) {
+                    var hour = parseInt(c.startDateTime.substring(11, 13));
+                    if (!isNaN(hour)) {
+                        hourlyCounts[hour] = (hourlyCounts[hour] || 0) + 1;
+                        hourlyDurations[hour] = (hourlyDurations[hour] || 0) + (parseInt(c.durationMins) || 0);
+                    }
+                }
+            }
+        });
+    });
+
+    var hours = Object.keys(hourlyCounts).map(Number).sort(function(a, b) { return a - b; });
+    var minHour = hours.length > 0 ? hours[0] : 0;
+    var maxHour = hours.length > 0 ? hours[hours.length - 1] : 23;
+
+    var labels = [];
+    var activityData = [];
+    var durationData = [];
+    for (var h = minHour; h <= maxHour; h++) {
+        labels.push((h < 10 ? '0' + h : h) + ':00');
+        activityData.push(hourlyCounts[h] || 0);
+        durationData.push(hourlyDurations[h] || 0);
     }
-  });
+
+    new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Activities',
+                    data: activityData,
+                    backgroundColor: 'rgba(54, 162, 235, 0.7)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1,
+                    yAxisID: 'y'
+                },
+                {
+                    label: 'Duration (min)',
+                    data: durationData,
+                    backgroundColor: 'rgba(255, 159, 64, 0.7)',
+                    borderColor: 'rgba(255, 159, 64, 1)',
+                    borderWidth: 1,
+                    yAxisID: 'y1'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'bottom' },
+                title: { display: true, text: 'Hourly Activities & Duration', font: { size: 14 } }
+            },
+            scales: {
+                y: {
+                    type: 'linear',
+                    position: 'left',
+                    beginAtZero: true,
+                    title: { display: true, text: 'Activities' }
+                },
+                y1: {
+                    type: 'linear',
+                    position: 'right',
+                    beginAtZero: true,
+                    title: { display: true, text: 'Duration (min)' },
+                    grid: { drawOnChartArea: false }
+                }
+            }
+        }
+    });
+}
+function cleanCategoryPath(category, subcategory, subject) {
+    var cat = category || 'Unknown';
+    var sub = subcategory || 'Unknown';
+    var subj = subject || 'Unknown';
+    if (subj === cat) {
+        return '[' + cat + '] ' + sub;
+    }
+    var raw = sub + ' - ' + subj;
+    var parts = raw.split(' - ');
+    var cleaned = [parts[0]];
+    for (var i = 1; i < parts.length; i++) {
+        if (parts[i] !== parts[i - 1]) {
+            cleaned.push(parts[i]);
+        }
+    }
+    return '[' + cat + '] ' + cleaned.join(' - ');
+}
+function fmtInt(n) {
+    return Number(n).toLocaleString('en-US', {maximumFractionDigits: 0});
+}
+function fmtDec(n) {
+    return Number(n).toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1});
 }
 window.setReportChannel = setReportChannel;
 window.generateReport = generateReport;
