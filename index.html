@@ -4187,13 +4187,6 @@ async function loginAs(email) {
     document.getElementById('appContainer').classList.add('show');
     // Start session heartbeat
     startSessionHeartbeat();
-    // Restore form state if returning from session expiry
-    if (savedFormState) {
-        setTimeout(function() {
-            showView('newCase', true);
-            setTimeout(function() { restoreFormState(); showToast('Your previous form data has been restored', 'success'); }, 150);
-        }, 300);
-    }
     document.getElementById('userAvatar').textContent = user.initials;
     document.getElementById('userName').textContent = user.name;
 
@@ -4241,6 +4234,14 @@ async function loginAs(email) {
 
     setCurrentDateTime(); applyFilters(); updateStats();
     document.getElementById('userSelectModal').classList.remove('show');
+    // Restore form state if returning from session expiry (must be after setCurrentDateTime)
+    if (savedFormState) {
+        showView('newCase', true);
+        setTimeout(function() {
+            restoreFormState();
+            showToast('Your previous form data has been restored', 'success');
+        }, 100);
+    }
 }
 
 function updateAdminAccess() {
@@ -7471,16 +7472,12 @@ async function saveCase(event) {
                 }
             });
 
-            // Update all related cases with the common field values (both API and memory)
-            for (const relatedCase of relatedCases) {
-                const updatedCase = Object.assign({}, relatedCase);
-                commonFields.forEach(field => {
-                    updatedCase[field] = commonFieldValues[field];
-                });
-                await apiPost('updateCase', updatedCase, { worksheet: currentUser.worksheet });
-                // Update in memory
-                updateCaseInMemory(relatedCase.jobId, commonFieldValues);
-            }
+            // Batch sync all related cases in one API call
+            const relatedJobIds = relatedCases.map(c => c.jobId);
+            await apiPost('batchSyncCases', { jobIds: relatedJobIds, fields: commonFieldValues }, { worksheet: currentUser.worksheet });
+            // Update all related cases in memory
+            relatedCases.forEach(rc => updateCaseInMemory(rc.jobId, commonFieldValues, true));
+            if (isAdmin) buildAdminSummaryFromCases();
         }
 
         // Update cases in memory (no API reload needed - faster and more reliable)
