@@ -3838,53 +3838,65 @@ async function loadCases(options) {
 
         var totalWorksheets = worksheetList.length;
 
-        // Show loading overlay once at start (avoid repeated updates which cause flashing)
         if (showProgress) {
-            if (totalWorksheets > 1) {
-                showLoadingOverlay(progressPrefix + ' (0 of ' + totalWorksheets + ' colleagues)');
-            } else {
-                showLoadingOverlay(progressPrefix);
-            }
+            showLoadingOverlay(progressPrefix);
         }
 
-        for (var i = 0; i < worksheetList.length; i++) {
-            var ws = worksheetList[i];
-
-            // Update progress message less frequently to reduce DOM updates
-            if (showProgress && totalWorksheets > 1) {
-                updateLoadingMessage(progressPrefix + ' (' + (i + 1) + ' of ' + totalWorksheets + ')');
-            }
-
+        // Admin with multiple worksheets: use single getAdminCases call for performance
+        if (isAdmin && totalWorksheets > 1) {
             try {
-                var params = { worksheet: ws.worksheet };
+                var params = {};
                 if (startDate) params.startDate = startDate;
                 if (endDate) params.endDate = endDate;
 
-                var result = await apiGet('getCases', params);
+                var result = await apiGet('getAdminCases', params, { timeout: 300000 });
 
                 if (result.success) {
-                    // Track actual date range from API response
-                    if (result.actualStartDate && (!actualStartDate || result.actualStartDate < actualStartDate)) {
-                        actualStartDate = result.actualStartDate;
-                    }
-                    if (result.actualEndDate && (!actualEndDate || result.actualEndDate > actualEndDate)) {
-                        actualEndDate = result.actualEndDate;
-                    }
+                    if (result.actualStartDate) actualStartDate = result.actualStartDate;
+                    if (result.actualEndDate) actualEndDate = result.actualEndDate;
 
-                    // Add worksheet and userName metadata to each case
-                    // Normalize actionResult for display (single source of truth)
                     if (result.cases && result.cases.length > 0) {
                         result.cases.forEach(function(c) {
-                            c.worksheet = ws.worksheet;
-                            c.userName = ws.userName;
                             c.actionResult = normalizeActionResultForDisplay(c.actionResult);
                         });
-                        allCases = allCases.concat(result.cases);
+                        allCases = result.cases;
                     }
-
                 }
             } catch (err) {
-                console.error('Error loading cases for ' + ws.userName + ':', err);
+                console.error('Error loading admin cases:', err);
+            }
+        } else {
+            // Regular user or single worksheet: use getCases per worksheet
+            for (var i = 0; i < worksheetList.length; i++) {
+                var ws = worksheetList[i];
+
+                try {
+                    params = { worksheet: ws.worksheet };
+                    if (startDate) params.startDate = startDate;
+                    if (endDate) params.endDate = endDate;
+
+                    result = await apiGet('getCases', params);
+
+                    if (result.success) {
+                        if (result.actualStartDate && (!actualStartDate || result.actualStartDate < actualStartDate)) {
+                            actualStartDate = result.actualStartDate;
+                        }
+                        if (result.actualEndDate && (!actualEndDate || result.actualEndDate > actualEndDate)) {
+                            actualEndDate = result.actualEndDate;
+                        }
+
+                        if (result.cases && result.cases.length > 0) {
+                            result.cases.forEach(function(c) {
+                                c.worksheet = ws.worksheet;
+                                c.userName = ws.userName;
+                                c.actionResult = normalizeActionResultForDisplay(c.actionResult);
+                            });
+                            allCases = allCases.concat(result.cases);
+                        }
+                    }
+                } catch (err) {
+                    console.error('Error loading cases for ' + ws.userName + ':', err);
+                }
             }
         }
 
