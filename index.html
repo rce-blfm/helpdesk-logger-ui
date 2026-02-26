@@ -3838,10 +3838,6 @@ async function loadCases(options) {
 
         var totalWorksheets = worksheetList.length;
 
-        if (showProgress) {
-            showLoadingOverlay(progressPrefix);
-        }
-
         // Admin with multiple worksheets: use single getAdminCases call for short ranges
         // For large ranges (>3 months), fall back to per-worksheet calls to avoid GAS timeout
         var useAdminBatchCall = false;
@@ -3857,10 +3853,10 @@ async function loadCases(options) {
             var elapsedSec = 0;
             var elapsedTimer = null;
             if (showProgress) {
-                updateLoadingMessage(progressPrefix + ' (' + totalWorksheets + ' colleagues)');
+                showLoadingOverlay(progressPrefix + ' (' + totalWorksheets + ' colleagues)');
                 elapsedTimer = setInterval(function() {
                     elapsedSec++;
-                    updateLoadingMessage(progressPrefix + ' (' + totalWorksheets + ' colleagues, ' + elapsedSec + 's elapsed)');
+                    showLoadingOverlay(progressPrefix + ' (' + totalWorksheets + ' colleagues, ' + elapsedSec + 's elapsed)');
                 }, 1000);
             }
             try {
@@ -3888,14 +3884,18 @@ async function loadCases(options) {
             }
         } else {
             // Regular user, single worksheet, or large date range: use getCases per worksheet
-            if (showProgress && totalWorksheets > 1) {
-                updateLoadingMessage(progressPrefix + ' (0 of ' + totalWorksheets + ' colleagues)');
+            if (showProgress) {
+                if (totalWorksheets > 1) {
+                    showLoadingOverlay(progressPrefix + ' (0 of ' + totalWorksheets + ' colleagues)');
+                } else {
+                    showLoadingOverlay(progressPrefix);
+                }
             }
             for (var i = 0; i < worksheetList.length; i++) {
                 var ws = worksheetList[i];
 
                 if (showProgress && totalWorksheets > 1) {
-                    updateLoadingMessage(progressPrefix + ' (' + (i + 1) + ' of ' + totalWorksheets + ' colleagues)');
+                    showLoadingOverlay(progressPrefix + ' (' + (i + 1) + ' of ' + totalWorksheets + ' colleagues)');
                 }
                 try {
                     params = { worksheet: ws.worksheet };
@@ -6036,7 +6036,7 @@ async function applyPeriodSelection() {
                 adminReqEndStr = formatLocalDate(adminReqRange.end);
             }
 
-            var loaded = await ensureDataLoaded(adminReqStartStr, adminReqEndStr, 'Loading data...');
+            var loaded = await ensureDataLoaded(adminReqStartStr, adminReqEndStr, 'Loading cases...');
             adminCases = cases; // keep in sync
             if (!loaded) showToast('Using cached data', 'info');
 
@@ -6060,7 +6060,7 @@ async function applyPeriodSelection() {
                 reqEndStr = formatLocalDate(reqRange.end);
             }
 
-            var dashLoaded = await ensureDataLoaded(reqStartStr, reqEndStr, 'Loading data...');
+            var dashLoaded = await ensureDataLoaded(reqStartStr, reqEndStr, 'Loading cases...');
             if (!dashLoaded) showToast('Using cached data', 'info');
 
             applyFilters();
@@ -8545,7 +8545,7 @@ async function loadAdminCases(forceRefresh = false) {
         cases = [];
     }
 
-    var loaded = await ensureDataLoaded(dateRange.startDate, dateRange.endDate, 'Loading helpdesk cases...');
+    var loaded = await ensureDataLoaded(dateRange.startDate, dateRange.endDate, 'Loading cases...');
     cases = adminCases;
 
     adminCacheTimestamp = Date.now();
@@ -9408,7 +9408,7 @@ async function generateReport() {
     if (!isRangeFullyCovered(monthStart, monthEnd)) {
         document.getElementById('reportContent').innerHTML = '<div class="report-placeholder"><i class="fas fa-spinner fa-spin"></i><p>Loading data for ' + monthVal + '...</p></div>';
         try {
-            await ensureDataLoaded(monthStart, monthEnd, 'Loading report data...');
+            await ensureDataLoaded(monthStart, monthEnd, 'Loading cases...');
         } catch (err) {
             document.getElementById('reportContent').innerHTML = '<div class="report-placeholder"><i class="fas fa-exclamation-triangle"></i><p>Error loading data: ' + err.message + '</p></div>';
             return;
