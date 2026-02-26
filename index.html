@@ -2163,6 +2163,7 @@
             font-weight: 600;
         }
         .role-badge.admin { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
+        .role-badge.supervisor { background: rgba(168, 85, 247, 0.15); color: #a855f7; }
         .role-badge.user { background: rgba(14, 165, 233, 0.15); color: var(--accent-primary); }
 
         .status-dot {
@@ -3005,8 +3006,8 @@
             <!-- Admin View -->
             <div id="adminView" class="form-container">
                 <div class="admin-header">
-                    <h2><i class="fas fa-cog" style="color: var(--warning);"></i> Admin Panel</h2>
-                    <p class="admin-subtitle">Manage users and view reports</p>
+                    <h2><i class="fas fa-cog" style="color: var(--warning);"></i> <span id="adminPanelTitle">Admin Panel</span></h2>
+                    <p class="admin-subtitle" id="adminPanelSubtitle">Manage users and view reports</p>
                 </div>
 
                 <div class="admin-tabs">
@@ -3141,6 +3142,7 @@
                         <label class="form-label">Role <span class="required">*</span></label>
                         <select class="form-select" id="userRoleInput" required>
                             <option value="user">User</option>
+                            <option value="supervisor">Supervisor</option>
                             <option value="admin">Admin</option>
                         </select>
                     </div>
@@ -4233,7 +4235,7 @@ async function loginAs(email) {
     initAllDropdowns();
 
     // Set admin state and get helpdesk users
-    isAdmin = user.role === 'admin';
+    isAdmin = user.role === 'admin' || user.role === 'supervisor';
     const currentUserIsHelpdesk = user.isHelpdesk === true || user.isHelpdesk === 'TRUE';
     currentUser.isHelpdesk = currentUserIsHelpdesk;
 
@@ -4286,7 +4288,7 @@ async function loginAs(email) {
 function updateAdminAccess() {
     const adminTab = document.getElementById('adminTab');
     if (adminTab) {
-        adminTab.style.display = currentUser && currentUser.role === 'admin' ? 'flex' : 'none';
+        adminTab.style.display = currentUser && (currentUser.role === 'admin' || currentUser.role === 'supervisor') ? 'flex' : 'none';
     }
 }
 
@@ -4690,7 +4692,21 @@ function showView(viewName, skipReset = false) {
             document.getElementById('adminTab').classList.add('active');
             // Sync adminCases with cases for shared data
             adminCases = cases;
-            renderAdminUserList();
+            // Supervisor role: hide User Management and Reports tabs, show only Helpdesk Cases
+            var isSupervisorRole = currentUser && currentUser.role === 'supervisor';
+            var adminTabBtns = document.querySelectorAll('.admin-tabs .admin-tab');
+            if (adminTabBtns.length >= 3) {
+                adminTabBtns[0].style.display = isSupervisorRole ? 'none' : ''; // User Management
+                adminTabBtns[2].style.display = isSupervisorRole ? 'none' : ''; // Reports
+            }
+            // Update panel title/subtitle based on role
+            document.getElementById('adminPanelTitle').textContent = isSupervisorRole ? 'Supervisor Panel' : 'Admin Panel';
+            document.getElementById('adminPanelSubtitle').textContent = isSupervisorRole ? 'View helpdesk cases across the team' : 'Manage users and view reports';
+            if (isSupervisorRole) {
+                showAdminTab('helpdeskCases');
+            } else {
+                renderAdminUserList();
+            }
             break;
     }
 }
@@ -8302,7 +8318,7 @@ function renderAdminUserList() {
         return '<div class="admin-user-row">' +
             '<div class="user-name">' + u.name + '<\/div>' +
             '<div class="user-email">' + u.email + '<\/div>' +
-            '<div><span class="role-badge ' + u.role + '">' + (u.role === 'admin' ? '<i class="fas fa-shield-alt"><\/i>' : '<i class="fas fa-user"><\/i>') + ' ' + u.role + '<\/span><\/div>' +
+            '<div><span class="role-badge ' + u.role + '">' + (u.role === 'admin' ? '<i class="fas fa-shield-alt"><\/i>' : u.role === 'supervisor' ? '<i class="fas fa-user-shield"><\/i>' : '<i class="fas fa-user"><\/i>') + ' ' + u.role + '<\/span><\/div>' +
             '<div>' + (u.worksheet || '-') + '<\/div>' +
             '<div><span class="status-dot ' + (u.isActive ? 'active' : 'inactive') + '"><\/span>' + (u.isActive ? 'Active' : 'Inactive') + '<\/div>' +
             '<div><span class="status-dot ' + (u.isHelpdesk ? 'active' : 'inactive') + '"><\/span>' + (u.isHelpdesk ? 'Yes' : 'No') + '<\/div>' +
@@ -9328,7 +9344,7 @@ async function ensureDataLoaded(startDate, endDate, progressPrefix) {
             endDate: range.end,
             worksheets: worksheetsToLoad,
             showProgress: true,
-            progressPrefix: progressPrefix || 'Loading data...'
+            progressPrefix: progressPrefix || 'Loading cases...'
         });
         if (loadResult.cases && loadResult.cases.length > 0) {
             // Dedup merge into adminCases
@@ -9406,7 +9422,7 @@ async function generateReport() {
     var monthEnd = parts[0] + '-' + parts[1] + '-' + String(lastDay).padStart(2, '0');
 
     if (!isRangeFullyCovered(monthStart, monthEnd)) {
-        document.getElementById('reportContent').innerHTML = '<div class="report-placeholder"><i class="fas fa-spinner fa-spin"></i><p>Loading data for ' + monthVal + '...</p></div>';
+        document.getElementById('reportContent').innerHTML = '<div class="report-placeholder"><i class="fas fa-spinner fa-spin"></i><p>Loading cases for ' + monthVal + '...</p></div>';
         try {
             await ensureDataLoaded(monthStart, monthEnd, 'Loading cases...');
         } catch (err) {
