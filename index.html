@@ -6736,7 +6736,8 @@ function renderCaseList(list, containerId) {
 
             const isEscalated = relatedCases.some(f => f.escalateTicket && f.escalateTicket.trim() !== '');
             const isPending = latestCase.actionResult !== 'Completed';
-            const checkboxHtml = isPending
+            const canCloseDashboard = isPending && checkCaseOwnership(c);
+            const checkboxHtml = canCloseDashboard
                 ? `<div class="checkbox-cell" onclick="event.stopPropagation()"><input type="checkbox" class="case-checkbox" data-jobid="${c.jobId || ''}" onchange="updateSelection()"><\/div>`
                 : `<div class="checkbox-cell"><\/div>`;
             // Determine status display
