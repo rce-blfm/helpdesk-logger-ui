@@ -3842,8 +3842,27 @@ async function loadCases(options) {
             showLoadingOverlay(progressPrefix);
         }
 
-        // Admin with multiple worksheets: use single getAdminCases call for performance
+        // Admin with multiple worksheets: use single getAdminCases call for short ranges
+        // For large ranges (>3 months), fall back to per-worksheet calls to avoid GAS timeout
+        var useAdminBatchCall = false;
         if (isAdmin && totalWorksheets > 1) {
+            var monthSpan = 1;
+            if (startDate && endDate) {
+                var sd = new Date(startDate), ed = new Date(endDate);
+                monthSpan = (ed.getFullYear() - sd.getFullYear()) * 12 + (ed.getMonth() - sd.getMonth()) + 1;
+            }
+            useAdminBatchCall = monthSpan <= 3;
+        }
+        if (useAdminBatchCall) {
+            var elapsedSec = 0;
+            var elapsedTimer = null;
+            if (showProgress) {
+                updateLoadingMessage(progressPrefix + ' (' + totalWorksheets + ' colleagues)');
+                elapsedTimer = setInterval(function() {
+                    elapsedSec++;
+                    updateLoadingMessage(progressPrefix + ' (' + totalWorksheets + ' colleagues, ' + elapsedSec + 's elapsed)');
+                }, 1000);
+            }
             try {
                 var params = {};
                 if (startDate) params.startDate = startDate;
@@ -3864,12 +3883,20 @@ async function loadCases(options) {
                 }
             } catch (err) {
                 console.error('Error loading admin cases:', err);
+            } finally {
+                if (elapsedTimer) clearInterval(elapsedTimer);
             }
         } else {
-            // Regular user or single worksheet: use getCases per worksheet
+            // Regular user, single worksheet, or large date range: use getCases per worksheet
+            if (showProgress && totalWorksheets > 1) {
+                updateLoadingMessage(progressPrefix + ' (0 of ' + totalWorksheets + ' colleagues)');
+            }
             for (var i = 0; i < worksheetList.length; i++) {
                 var ws = worksheetList[i];
 
+                if (showProgress && totalWorksheets > 1) {
+                    updateLoadingMessage(progressPrefix + ' (' + (i + 1) + ' of ' + totalWorksheets + ' colleagues)');
+                }
                 try {
                     params = { worksheet: ws.worksheet };
                     if (startDate) params.startDate = startDate;
