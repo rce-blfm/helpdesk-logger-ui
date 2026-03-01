@@ -3714,6 +3714,79 @@ async function apiPost(action, data, params = {}, options = {}) {
     }
 }
 
+/**
+ * Fix 5: Retry wrapper for apiPost — handles transient GAS service errors.
+ * Retries on "Failed to fetch" (CORS/network), TRANSIENT_ERROR responses, and generic server errors.
+ * Uses exponential backoff: 1.5s, 3s between retries.
+ *
+ * @param {string} action - API action name
+ * @param {Object} data - Data to send as postData
+ * @param {Object} [params={}] - Additional URL parameters
+ * @param {Object} [options={}] - Options passed to apiPost (e.g., timeout)
+ * @param {number} [maxRetries=2] - Maximum number of retry attempts (total attempts = 1 + maxRetries)
+ * @returns {Object} API response
+ */
+async function apiPostWithRetry(action, data, params, options, maxRetries) {
+    params = params || {};
+    options = options || {};
+    maxRetries = maxRetries || 2;
+    var lastError = null;
+    var lastResult = null;
+
+    for (var attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            var result = await apiPost(action, data, params, options);
+
+            // Check if the server returned a TRANSIENT_ERROR (from doGet's top-level catch)
+            if (result && !result.success && result.error && result.error.indexOf('TRANSIENT_ERROR') !== -1) {
+                lastResult = result;
+                if (attempt < maxRetries) {
+                    await new Promise(function(resolve) { setTimeout(resolve, 1500 * Math.pow(2, attempt)); });
+                    continue;
+                }
+                // Last attempt — strip the TRANSIENT_ERROR prefix for cleaner display
+                result.error = result.error.replace('TRANSIENT_ERROR: ', 'Server error: ');
+                return result;
+            }
+
+            // Also retry on "Server busy" lock contention errors
+            if (result && !result.success && result.error && result.error.indexOf('Server busy') !== -1) {
+                lastResult = result;
+                if (attempt < maxRetries) {
+                    await new Promise(function(resolve) { setTimeout(resolve, 1500 * Math.pow(2, attempt)); });
+                    continue;
+                }
+                return result;
+            }
+
+            return result;
+
+        } catch (err) {
+            lastError = err;
+
+            // Determine if the error is retryable
+            var isRetryable = (
+                err.message === 'Failed to fetch' ||
+                err.message.indexOf('TRANSIENT_ERROR') !== -1 ||
+                err.message.indexOf('NetworkError') !== -1 ||
+                err.message.indexOf('network') !== -1
+            );
+
+            // Don't retry non-transient errors (auth, timeout, session expired)
+            if (!isRetryable || attempt >= maxRetries) {
+                throw err;
+            }
+
+            // Wait before retrying with exponential backoff
+            await new Promise(function(resolve) { setTimeout(resolve, 1500 * Math.pow(2, attempt)); });
+        }
+    }
+
+    // Should not reach here, but just in case
+    if (lastError) throw lastError;
+    if (lastResult) return lastResult;
+}
+
 function isTokenExpired() {
     if (!googleCredential || !tokenExpiresAt) return true;
     // Consider expired 60 seconds before actual expiry to avoid edge cases
@@ -7565,11 +7638,12 @@ async function saveCase(event) {
             }
         }
 
+        // Fix 5: Use apiPostWithRetry for automatic retry on transient GAS service errors
         let result;
         if (editingId) {
-            result = await apiPost('updateCase', caseData, { worksheet: currentUser.worksheet });
+            result = await apiPostWithRetry('updateCase', caseData, { worksheet: currentUser.worksheet });
         } else {
-            result = await apiPost('addCase', caseData, { worksheet: currentUser.worksheet });
+            result = await apiPostWithRetry('addCase', caseData, { worksheet: currentUser.worksheet });
         }
 
         if (!result.success) {
@@ -7630,6 +7704,11 @@ async function saveCase(event) {
         if (err.message === 'REQUEST_TIMEOUT') {
             showTimeoutRetryDialog('Save timed out. The server may be busy. Would you like to retry?', function() {
                 // Re-trigger save
+                document.getElementById('caseForm').dispatchEvent(new Event('submit', { cancelable: true }));
+            });
+        } else if (err.message === 'Failed to fetch' || (err.message && err.message.indexOf('NetworkError') !== -1)) {
+            // After retries still failed — show a more helpful message with retry option
+            showTimeoutRetryDialog('Server is temporarily unavailable (all retry attempts failed). Would you like to try again?', function() {
                 document.getElementById('caseForm').dispatchEvent(new Event('submit', { cancelable: true }));
             });
         } else if (err.message !== 'Session expired') {
