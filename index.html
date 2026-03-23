@@ -2940,7 +2940,7 @@
                                 </div>
                                 <div class="form-section-divider"><span>Contact Information</span></div>
                                 <div class="form-group"><label class="form-label">Contact Person</label><input type="text" class="form-input" id="contactPerson" maxlength="50" placeholder="e.g. Mr. John Cheung" onblur="formatContactPerson(this)"></div>
-                                <div class="form-group"><label class="form-label">Tel No. <span class="required">*</span></label><input type="tel" class="form-input" id="telNo" placeholder="e.g. 9876-5432" maxlength="9" onblur="formatTelNo(this)" oninput="formatTelNoInput(this)"></div>
+                                <div class="form-group"><label class="form-label">Tel No.</label><input type="tel" class="form-input" id="telNo" placeholder="e.g. 9876-5432" maxlength="9" onblur="formatTelNo(this)" oninput="formatTelNoInput(this)"></div>
                                 <div class="form-group"><label class="form-label">Agent Code</label><input type="text" class="form-input uppercase-input" id="agentCode" placeholder="e.g. Z0S123" maxlength="10"></div>
                                 <div class="form-group"><label class="form-label">Location (if on-site)</label><select class="form-select" id="location"><option value="">Not required</option><option value="MU Tower">MU Tower</option><option value="Harbour Front">Harbour Front</option><option value="Gateway">Gateway</option><option value="Other">Other</option></select></div>
                                 <div class="form-section-divider"><span>Case Classification</span><button type="button" class="classification-helper-btn" onclick="showClassificationWizard()"><i class="fas fa-magic"></i> Helper</button></div>
@@ -7469,7 +7469,7 @@ function highlightAndFocus(fieldId) {
 }
 
 // All mandatory field IDs for clearing highlights
-var ALL_MANDATORY_FIELDS = ['callDate', 'startTime', 'endTime', 'source', 'channel', 'telNo', 'caseType', 'category', 'subcategory', 'subject', 'symptom', 'actionResult'];
+var ALL_MANDATORY_FIELDS = ['callDate', 'startTime', 'endTime', 'source', 'channel', 'caseType', 'category', 'subcategory', 'subject', 'symptom', 'actionResult'];
 
 function clearAllFieldHighlights() {
     ALL_MANDATORY_FIELDS.forEach(function(id) { clearFieldHighlight(id); });
@@ -7526,10 +7526,6 @@ async function saveCase(event) {
     // Channel
     const channelVal = document.getElementById('channel').value;
     if (!channelVal) { highlightAndFocus('channel'); showToast('Please select a Channel', 'error'); resetSaveBtn(); return; }
-
-    // Tel No.
-    const telNoVal = document.getElementById('telNo').value.trim();
-    if (!telNoVal) { highlightAndFocus('telNo'); showToast('Please enter a Tel No.', 'error'); resetSaveBtn(); return; }
 
     // Case Type
     const caseTypeVal = document.getElementById('caseType').value;
