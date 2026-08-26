@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="referrer" content="no-referrer">
     <title>Helpdesk Call Logger</title>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script type="text/javascript" nonce="181cd8bbbfa642bca10c69ae2f4" src="//local.adguard.org?ts=1787751439206&amp;type=content-script&amp;dmn=pfst.cf2.poecdn.net&amp;url=https%3A%2F%2Fpfst.cf2.poecdn.net%2Fbase%2Ftext%2Fb07f6ca6ca134a9fe19c8ddc6235ef903864ade85102d8daced4888d9492b014%3Fpmaid%3D648702065&amp;app=com.google.Chrome&amp;css=3&amp;js=1&amp;rel=1&amp;rji=1&amp;sbe=1"></script><script type="text/javascript" nonce="181cd8bbbfa642bca10c69ae2f4" src="//local.adguard.org?ts=1787751439206&amp;name=AdGuard%20Extra&amp;type=user-script"></script><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
@@ -2759,7 +2759,7 @@
             <div class="login-logo"><i class="fas fa-headset"></i></div>
             <h1 class="login-title">Helpdesk Logger</h1>
             <p class="login-subtitle">Sign in to access your cases</p>
-            <p style="font-size:0.7rem; color:var(--text-muted); margin-top:-8px;">v2.6</p>
+            <p style="font-size:0.7rem; color:var(--text-muted); margin-top:-8px;">v2.7</p>
             <div id="googleSignInButton" style="display:flex;justify-content:center;"></div>
             <div id="loginStatus" style="margin-top: 16px; display: none;"></div>
             <div id="loginSpinner" style="margin-top: 20px; display: none; text-align: center; color: var(--text-muted);">
@@ -3520,16 +3520,40 @@ async function handleGoogleSignIn(response) {
         // Set login flow flag so auth errors show as login errors, not "Session Expired"
         isLoginFlow = true;
         showLoadingOverlay('Verifying access...');
-        try {
-            await loadUsersFromAPI();
-            await loadWorksheetsFromAPI();
-        } catch (loginErr) {
+
+        // Auto-retry login on transient server errors (up to 3 retries, 2s apart)
+        var loginMaxRetries = 3;
+        var loginSuccess = false;
+        var loginLastError = null;
+        for (var loginAttempt = 0; loginAttempt <= loginMaxRetries; loginAttempt++) {
+            try {
+                await loadUsersFromAPI();
+                await loadWorksheetsFromAPI();
+                loginSuccess = true;
+                break;
+            } catch (loginErr) {
+                loginLastError = loginErr;
+                // AUTH_ERROR = genuinely unauthorized — don't retry
+                if (loginErr.message === 'AUTH_ERROR') {
+                    break;
+                }
+                // TRANSIENT_ERROR or network failure — retry after delay
+                if (loginAttempt < loginMaxRetries) {
+                    showLoadingOverlay('Server busy, retrying (' + (loginAttempt + 1) + '/' + loginMaxRetries + ')...');
+                    await new Promise(function(r) { setTimeout(r, 2000); });
+                }
+            }
+        }
+
+        if (!loginSuccess) {
             isLoginFlow = false;
             hideLoadingOverlay();
             googleCredential = null;
             tokenExpiresAt = 0;
-            if (loginErr.message === 'AUTH_ERROR') {
+            if (loginLastError && loginLastError.message === 'AUTH_ERROR') {
                 showLoginError('Access denied. Your Google account (' + email + ') is not authorized to use the Helpdesk Logger. Please contact the administrator.');
+            } else if (loginLastError && loginLastError.message === 'TRANSIENT_ERROR') {
+                showLoginError('Server is temporarily unavailable. Please try again in a few minutes.');
             } else {
                 showLoginError('Failed to connect to the server. Please try again.');
             }
@@ -3640,6 +3664,10 @@ async function apiGet(action, params = {}, options = {}) {
             throw new Error(isLoginFlow ? 'AUTH_ERROR' : 'Session expired');
         }
         var result = await response.json();
+        // Detect transient server errors — throw specific error for retry handling
+        if (result && result.error && result.error.indexOf('TRANSIENT_ERROR') === 0) {
+            throw new Error('TRANSIENT_ERROR');
+        }
         if (result && result.error === 'Token expired') {
             if (!isLoginFlow) {
                 handleSessionExpired();
@@ -3692,6 +3720,10 @@ async function apiPost(action, data, params = {}, options = {}) {
             throw new Error(isLoginFlow ? 'AUTH_ERROR' : 'Session expired');
         }
         var result = await response.json();
+        // Detect transient server errors — throw specific error for retry handling
+        if (result && result.error && result.error.indexOf('TRANSIENT_ERROR') === 0) {
+            throw new Error('TRANSIENT_ERROR');
+        }
         if (result && result.error === 'Token expired') {
             if (!isLoginFlow) {
                 handleSessionExpired();
@@ -3878,8 +3910,8 @@ async function loadUsersFromAPI(retryCount = 0) {
             if (!isLoginFlow) showToast('Failed to load users: ' + result.error, 'error');
         }
     } catch (error) {
-        // During login flow, bubble up auth errors immediately (don't retry)
-        if (isLoginFlow && error.message === 'AUTH_ERROR') {
+        // During login flow, bubble up auth and transient errors immediately
+        if (isLoginFlow && (error.message === 'AUTH_ERROR' || error.message === 'TRANSIENT_ERROR')) {
             throw error;
         }
         // Retry once on network failure (common in iframe environments)
@@ -3902,8 +3934,8 @@ async function loadWorksheetsFromAPI(retryCount = 0) {
             console.error('Failed to load worksheets:', result.error);
         }
     } catch (error) {
-        // During login flow, bubble up auth errors immediately (don't retry)
-        if (isLoginFlow && error.message === 'AUTH_ERROR') {
+        // During login flow, bubble up auth and transient errors immediately
+        if (isLoginFlow && (error.message === 'AUTH_ERROR' || error.message === 'TRANSIENT_ERROR')) {
             throw error;
         }
         // Retry once on network failure (common in iframe environments)
