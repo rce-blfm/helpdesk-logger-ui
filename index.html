@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="referrer" content="no-referrer">
     <title>Helpdesk Call Logger</title>
-    <script type="text/javascript" nonce="181cd8bbbfa642bca10c69ae2f4" src="//local.adguard.org?ts=1787751439206&amp;type=content-script&amp;dmn=pfst.cf2.poecdn.net&amp;url=https%3A%2F%2Fpfst.cf2.poecdn.net%2Fbase%2Ftext%2Fb07f6ca6ca134a9fe19c8ddc6235ef903864ade85102d8daced4888d9492b014%3Fpmaid%3D648702065&amp;app=com.google.Chrome&amp;css=3&amp;js=1&amp;rel=1&amp;rji=1&amp;sbe=1"></script><script type="text/javascript" nonce="181cd8bbbfa642bca10c69ae2f4" src="//local.adguard.org?ts=1787751439206&amp;name=AdGuard%20Extra&amp;type=user-script"></script><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
@@ -2759,7 +2759,7 @@
             <div class="login-logo"><i class="fas fa-headset"></i></div>
             <h1 class="login-title">Helpdesk Logger</h1>
             <p class="login-subtitle">Sign in to access your cases</p>
-            <p style="font-size:0.7rem; color:var(--text-muted); margin-top:-8px;">v2.7</p>
+            <p style="font-size:0.7rem; color:var(--text-muted); margin-top:-8px;">v2.8</p>
             <div id="googleSignInButton" style="display:flex;justify-content:center;"></div>
             <div id="loginStatus" style="margin-top: 16px; display: none;"></div>
             <div id="loginSpinner" style="margin-top: 20px; display: none; text-align: center; color: var(--text-muted);">
@@ -3521,7 +3521,7 @@ async function handleGoogleSignIn(response) {
         isLoginFlow = true;
         showLoadingOverlay('Verifying access...');
 
-        // Auto-retry login on transient server errors (up to 3 retries, 2s apart)
+        // Auto-retry login on transient server errors (up to 3 retries, 3s apart)
         var loginMaxRetries = 3;
         var loginSuccess = false;
         var loginLastError = null;
@@ -3540,7 +3540,7 @@ async function handleGoogleSignIn(response) {
                 // TRANSIENT_ERROR or network failure — retry after delay
                 if (loginAttempt < loginMaxRetries) {
                     showLoadingOverlay('Server busy, retrying (' + (loginAttempt + 1) + '/' + loginMaxRetries + ')...');
-                    await new Promise(function(r) { setTimeout(r, 2000); });
+                    await new Promise(function(r) { setTimeout(r, 3000); });
                 }
             }
         }
@@ -3655,29 +3655,26 @@ async function apiGet(action, params = {}, options = {}) {
             signal: controller.signal
         });
         clearTimeout(timeoutId);
-        // Check for non-JSON responses (Google auth redirect)
+        // Check for non-JSON responses (Google auth redirect or GAS error page)
         var contentType = response.headers.get('content-type') || '';
         if (!contentType.includes('application/json') && !contentType.includes('text/javascript')) {
-            if (!isLoginFlow) {
-                handleSessionExpired();
-            }
-            throw new Error(isLoginFlow ? 'AUTH_ERROR' : 'Session expired');
+            // Non-JSON = GAS platform hiccup (not auth failure) — treat as transient for retry
+            throw new Error('TRANSIENT_ERROR');
         }
         var result = await response.json();
         // Detect transient server errors — throw specific error for retry handling
         if (result && result.error && result.error.indexOf('TRANSIENT_ERROR') === 0) {
             throw new Error('TRANSIENT_ERROR');
         }
+        // Only "Token expired" should trigger Session Expired (strict match)
         if (result && result.error === 'Token expired') {
             if (!isLoginFlow) {
                 handleSessionExpired();
             }
             throw new Error(isLoginFlow ? 'AUTH_ERROR' : 'Session expired');
         }
-        if (result && result.error && (result.error.toLowerCase().includes('authorization') || result.error.toLowerCase().includes('auth') || result.error.toLowerCase().includes('permission') || result.error.toLowerCase().includes('login'))) {
-            if (!isLoginFlow) {
-                handleSessionExpired();
-            }
+        // "Unauthorized" = genuine auth failure (user not registered, inactive, etc.)
+        if (result && result.error === 'Unauthorized') {
             throw new Error(isLoginFlow ? 'AUTH_ERROR' : 'Session expired');
         }
         return result;
@@ -3711,29 +3708,26 @@ async function apiPost(action, data, params = {}, options = {}) {
             signal: controller.signal
         });
         clearTimeout(timeoutId);
-        // Check for non-JSON responses (Google auth redirect)
+        // Check for non-JSON responses (Google auth redirect or GAS error page)
         var contentType = response.headers.get('content-type') || '';
         if (!contentType.includes('application/json') && !contentType.includes('text/javascript')) {
-            if (!isLoginFlow) {
-                handleSessionExpired();
-            }
-            throw new Error(isLoginFlow ? 'AUTH_ERROR' : 'Session expired');
+            // Non-JSON = GAS platform hiccup (not auth failure) — treat as transient for retry
+            throw new Error('TRANSIENT_ERROR');
         }
         var result = await response.json();
         // Detect transient server errors — throw specific error for retry handling
         if (result && result.error && result.error.indexOf('TRANSIENT_ERROR') === 0) {
             throw new Error('TRANSIENT_ERROR');
         }
+        // Only "Token expired" should trigger Session Expired (strict match)
         if (result && result.error === 'Token expired') {
             if (!isLoginFlow) {
                 handleSessionExpired();
             }
             throw new Error(isLoginFlow ? 'AUTH_ERROR' : 'Session expired');
         }
-        if (result && result.error && (result.error.toLowerCase().includes('authorization') || result.error.toLowerCase().includes('auth') || result.error.toLowerCase().includes('permission') || result.error.toLowerCase().includes('login'))) {
-            if (!isLoginFlow) {
-                handleSessionExpired();
-            }
+        // "Unauthorized" = genuine auth failure (user not registered, inactive, etc.)
+        if (result && result.error === 'Unauthorized') {
             throw new Error(isLoginFlow ? 'AUTH_ERROR' : 'Session expired');
         }
         return result;
@@ -4307,17 +4301,20 @@ function getWorksheetsToLoad() {
 }
 
 /**
- * Calculate initial date range (Last 30 days)
+ * Calculate initial date range
+ * Admin/supervisor: Last 7 days (faster load for 9+ worksheets)
+ * Regular user: Last 30 days
  * @returns {Object} { startDate, endDate } in YYYY-MM-DD format
  */
 function getInitialDateRange() {
     var now = new Date();
-    var thirtyDaysAgo = new Date(now);
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    var daysBack = isAdmin ? 7 : 30;
+    var startDate = new Date(now);
+    startDate.setDate(startDate.getDate() - daysBack);
 
     // Use shared formatLocalDate helper (single source of truth for date formatting)
     return {
-        startDate: formatLocalDate(thirtyDaysAgo),
+        startDate: formatLocalDate(startDate),
         endDate: formatLocalDate(now)
     };
 }
@@ -4407,20 +4404,33 @@ async function loginAs(email) {
     }
 
     // Load cases using unified function - same logic for both admin and non-admin
-    // Initial load: Last 30 days for all users using QUERY method
+    // Initial load: Admin = Last 7 days (faster), Regular = Last 30 days
     const dateRange = getInitialDateRange();
     const worksheetsToLoad = getWorksheetsToLoad();
+
+    // Set period button text to match initial range
+    var initialPeriodKey = isAdmin ? '7days' : '30days';
+    var initialPeriodText = getPresetDisplayText(initialPeriodKey);
+    var periodButtonText = document.getElementById('periodButtonText');
+    if (periodButtonText) periodButtonText.textContent = initialPeriodText;
+    var adminPeriodButtonText = document.getElementById('adminPeriodButtonText');
+    if (adminPeriodButtonText) adminPeriodButtonText.textContent = initialPeriodText;
+    var dateFilterInput = document.getElementById('dateFilter');
+    if (dateFilterInput) dateFilterInput.value = initialPeriodKey;
+    var adminPeriodFilterInput = document.getElementById('adminPeriodFilter');
+    if (adminPeriodFilterInput) adminPeriodFilterInput.value = initialPeriodKey;
 
     await ensureDataLoaded(dateRange.startDate, dateRange.endDate, 'Loading cases...');
     cases = adminCases; // ensureDataLoaded updates adminCases
     adminCacheTimestamp = Date.now();
-    adminCachePeriod = '30days';
+    adminCachePeriod = initialPeriodKey;
 
     // Update the data loaded range display
     updateDataLoadedRange();
 
     setCurrentDateTime(); applyFilters(); updateStats();
-    document.getElementById('userSelectModal').classList.remove('show');
+    var userModalEl = document.getElementById('userSelectModal');
+    if (userModalEl) userModalEl.classList.remove('show');
     // Restore form state if returning from session expiry (must be after setCurrentDateTime)
     if (savedFormState) {
         showView('newCase', true);
@@ -4643,11 +4653,15 @@ function performLogoutReset() {
     var adminSearchInput = document.getElementById('adminSearchInput');
     if (adminSearchInput) adminSearchInput.value = '';
 
-    // Reset period buttons text
+    // Reset period buttons text to default (will be set correctly on next login)
     var periodButtonText = document.getElementById('periodButtonText');
     if (periodButtonText) periodButtonText.textContent = 'Last 30 Days';
     var adminPeriodButtonText = document.getElementById('adminPeriodButtonText');
     if (adminPeriodButtonText) adminPeriodButtonText.textContent = 'Last 30 Days';
+    var dateFilterInput = document.getElementById('dateFilter');
+    if (dateFilterInput) dateFilterInput.value = '30days';
+    var adminPeriodFilterInput = document.getElementById('adminPeriodFilter');
+    if (adminPeriodFilterInput) adminPeriodFilterInput.value = '30days';
 
     // Reset colleague filter dropdown
     var dashboardColleagueFilter = document.getElementById('dashboardColleagueFilter');
@@ -7587,6 +7601,7 @@ async function saveCase(event) {
     if (agentCodeVal && agentCodeVal.length < 6) {
         showToast('Agent Code must be at least 6 characters', 'error');
         document.getElementById('agentCode').focus();
+        resetSaveBtn();
         return;
     }
 
