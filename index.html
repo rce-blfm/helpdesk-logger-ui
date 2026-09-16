@@ -8123,9 +8123,13 @@ function confirmDeleteCase() {
 async function deleteCase(jobId, deleteAll) {
     showLoadingOverlay('Deleting...');
     try {
-        const url = `${API_URL}?token=${encodeURIComponent(googleCredential)}&action=deleteCase&worksheet=${encodeURIComponent(currentUser.worksheet)}&jobId=${encodeURIComponent(jobId)}&deleteAll=${deleteAll}`;
-        const response = await fetch(url, { referrerPolicy: 'no-referrer', cache: 'no-store' });
-        const result = await response.json();
+        // Use apiGet() instead of raw fetch() — gets proper timeout, AbortController,
+        // and NON_JSON_RESPONSE handling (prevents browser/network retry issues)
+        const result = await apiGet('deleteCase', {
+            worksheet: currentUser.worksheet,
+            jobId: jobId,
+            deleteAll: String(deleteAll)
+        });
 
         if (result.success) {
             showToast(result.message || 'Case deleted successfully', 'success');
@@ -8140,7 +8144,17 @@ async function deleteCase(jobId, deleteAll) {
         }
     } catch (err) {
         hideLoadingOverlay();
-        showToast('Error deleting case: ' + err.message, 'error');
+        if (err.message === 'NON_JSON_RESPONSE') {
+            // Backend may have already deleted the row — don't show a scary error
+            showToast('Delete may have completed. Please refresh your data to verify.', 'warning');
+            dataChanged = true;
+            showView('dashboard');
+        } else if (err.message === 'REQUEST_TIMEOUT') {
+            showToast('Delete request timed out. Please check your data and try again if needed.', 'warning');
+            dataChanged = true;
+        } else if (err.message !== 'Session expired') {
+            showToast('Error deleting case: ' + err.message, 'error');
+        }
     }
 }
 
