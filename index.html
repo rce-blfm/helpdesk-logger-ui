@@ -3537,7 +3537,8 @@ async function handleGoogleSignIn(response) {
                 if (loginErr.message === 'AUTH_ERROR') {
                     break;
                 }
-                // TRANSIENT_ERROR or network failure — retry after delay
+                // TRANSIENT_ERROR, NON_JSON_RESPONSE, or network failure — retry after delay
+                // (read-only operations are safe to retry regardless of error type)
                 if (loginAttempt < loginMaxRetries) {
                     showLoadingOverlay('Server busy, retrying (' + (loginAttempt + 1) + '/' + loginMaxRetries + ')...');
                     await new Promise(function(r) { setTimeout(r, 3000); });
@@ -3552,7 +3553,7 @@ async function handleGoogleSignIn(response) {
             tokenExpiresAt = 0;
             if (loginLastError && loginLastError.message === 'AUTH_ERROR') {
                 showLoginError('Access denied. Your Google account (' + email + ') is not authorized to use the Helpdesk Logger. Please contact the administrator.');
-            } else if (loginLastError && loginLastError.message === 'TRANSIENT_ERROR') {
+            } else if (loginLastError && (loginLastError.message === 'TRANSIENT_ERROR' || loginLastError.message === 'NON_JSON_RESPONSE')) {
                 showLoginError('Server is temporarily unavailable. Please try again in a few minutes.');
             } else {
                 showLoginError('Failed to connect to the server. Please try again.');
@@ -3658,11 +3659,14 @@ async function apiGet(action, params = {}, options = {}) {
         // Check for non-JSON responses (Google auth redirect or GAS error page)
         var contentType = response.headers.get('content-type') || '';
         if (!contentType.includes('application/json') && !contentType.includes('text/javascript')) {
-            // Non-JSON = GAS platform hiccup (not auth failure) — treat as transient for retry
-            throw new Error('TRANSIENT_ERROR');
+            // Non-JSON = response delivery failure. The backend MAY have succeeded
+            // (data flushed) but GAS failed to deliver the JSON response.
+            // Use distinct error code so write operations (apiPostWithRetry) do NOT retry,
+            // while read operations (login flow) can safely retry.
+            throw new Error('NON_JSON_RESPONSE');
         }
         var result = await response.json();
-        // Detect transient server errors — throw specific error for retry handling
+        // Detect transient server errors — server explicitly reports failure, safe to retry
         if (result && result.error && result.error.indexOf('TRANSIENT_ERROR') === 0) {
             throw new Error('TRANSIENT_ERROR');
         }
@@ -3711,11 +3715,12 @@ async function apiPost(action, data, params = {}, options = {}) {
         // Check for non-JSON responses (Google auth redirect or GAS error page)
         var contentType = response.headers.get('content-type') || '';
         if (!contentType.includes('application/json') && !contentType.includes('text/javascript')) {
-            // Non-JSON = GAS platform hiccup (not auth failure) — treat as transient for retry
-            throw new Error('TRANSIENT_ERROR');
+            // Non-JSON = response delivery failure. Backend MAY have already succeeded.
+            // Distinct from TRANSIENT_ERROR so apiPostWithRetry won't retry writes.
+            throw new Error('NON_JSON_RESPONSE');
         }
         var result = await response.json();
-        // Detect transient server errors — throw specific error for retry handling
+        // Detect transient server errors — server explicitly reports failure, safe to retry
         if (result && result.error && result.error.indexOf('TRANSIENT_ERROR') === 0) {
             throw new Error('TRANSIENT_ERROR');
         }
@@ -3742,7 +3747,9 @@ async function apiPost(action, data, params = {}, options = {}) {
 
 /**
  * Fix 5: Retry wrapper for apiPost — handles transient GAS service errors.
- * Retries on "Failed to fetch" (CORS/network), TRANSIENT_ERROR responses, and generic server errors.
+ * Retries on TRANSIENT_ERROR (server explicitly reported failure) and "Server busy" (lock contention).
+ * Does NOT retry NON_JSON_RESPONSE — the backend may have already committed data via flush(),
+ * so retrying would create duplicate records (e.g., duplicate addCase rows).
  * Uses exponential backoff: 1.5s, 3s between retries.
  *
  * @param {string} action - API action name
@@ -3764,6 +3771,7 @@ async function apiPostWithRetry(action, data, params, options, maxRetries) {
             var result = await apiPost(action, data, params, options);
 
             // Check if the server returned a TRANSIENT_ERROR (from doGet's top-level catch)
+            // This means the server caught an error BEFORE writing — safe to retry.
             if (result && !result.success && result.error && result.error.indexOf('TRANSIENT_ERROR') !== -1) {
                 lastResult = result;
                 if (attempt < maxRetries) {
@@ -3775,7 +3783,7 @@ async function apiPostWithRetry(action, data, params, options, maxRetries) {
                 return result;
             }
 
-            // Also retry on "Server busy" lock contention errors
+            // Also retry on "Server busy" lock contention errors (write hasn't started)
             if (result && !result.success && result.error && result.error.indexOf('Server busy') !== -1) {
                 lastResult = result;
                 if (attempt < maxRetries) {
@@ -3790,7 +3798,14 @@ async function apiPostWithRetry(action, data, params, options, maxRetries) {
         } catch (err) {
             lastError = err;
 
-            // Determine if the error is retryable
+            // NON_JSON_RESPONSE = response delivery failure AFTER the backend may have
+            // already committed data (flush). Do NOT retry — would create duplicates.
+            // Show a warning instead of an error since the operation likely succeeded.
+            if (err.message === 'NON_JSON_RESPONSE') {
+                throw new Error('The operation may have completed but the server response was lost. Please refresh your data to verify.');
+            }
+
+            // Determine if the error is retryable (only errors where write definitely didn't happen)
             var isRetryable = (
                 err.message === 'Failed to fetch' ||
                 err.message.indexOf('TRANSIENT_ERROR') !== -1 ||
@@ -3904,8 +3919,9 @@ async function loadUsersFromAPI(retryCount = 0) {
             if (!isLoginFlow) showToast('Failed to load users: ' + result.error, 'error');
         }
     } catch (error) {
-        // During login flow, bubble up auth and transient errors immediately
-        if (isLoginFlow && (error.message === 'AUTH_ERROR' || error.message === 'TRANSIENT_ERROR')) {
+        // During login flow, bubble up auth, transient, and non-JSON errors immediately
+        // so the outer login retry loop can handle them
+        if (isLoginFlow && (error.message === 'AUTH_ERROR' || error.message === 'TRANSIENT_ERROR' || error.message === 'NON_JSON_RESPONSE')) {
             throw error;
         }
         // Retry once on network failure (common in iframe environments)
@@ -3928,8 +3944,9 @@ async function loadWorksheetsFromAPI(retryCount = 0) {
             console.error('Failed to load worksheets:', result.error);
         }
     } catch (error) {
-        // During login flow, bubble up auth and transient errors immediately
-        if (isLoginFlow && (error.message === 'AUTH_ERROR' || error.message === 'TRANSIENT_ERROR')) {
+        // During login flow, bubble up auth, transient, and non-JSON errors immediately
+        // so the outer login retry loop can handle them
+        if (isLoginFlow && (error.message === 'AUTH_ERROR' || error.message === 'TRANSIENT_ERROR' || error.message === 'NON_JSON_RESPONSE')) {
             throw error;
         }
         // Retry once on network failure (common in iframe environments)
