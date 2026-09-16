@@ -2759,7 +2759,7 @@
             <div class="login-logo"><i class="fas fa-headset"></i></div>
             <h1 class="login-title">Helpdesk Logger</h1>
             <p class="login-subtitle">Sign in to access your cases</p>
-            <p style="font-size:0.7rem; color:var(--text-muted); margin-top:-8px;">v2.8</p>
+            <p style="font-size:0.7rem; color:var(--text-muted); margin-top:-8px;">v2.7</p>
             <div id="googleSignInButton" style="display:flex;justify-content:center;"></div>
             <div id="loginStatus" style="margin-top: 16px; display: none;"></div>
             <div id="loginSpinner" style="margin-top: 20px; display: none; text-align: center; color: var(--text-muted);">
@@ -3521,7 +3521,7 @@ async function handleGoogleSignIn(response) {
         isLoginFlow = true;
         showLoadingOverlay('Verifying access...');
 
-        // Auto-retry login on transient server errors (up to 3 retries, 3s apart)
+        // Auto-retry login on transient server errors (up to 3 retries, 2s apart)
         var loginMaxRetries = 3;
         var loginSuccess = false;
         var loginLastError = null;
@@ -3537,11 +3537,10 @@ async function handleGoogleSignIn(response) {
                 if (loginErr.message === 'AUTH_ERROR') {
                     break;
                 }
-                // TRANSIENT_ERROR, NON_JSON_RESPONSE, or network failure — retry after delay
-                // (read-only operations are safe to retry regardless of error type)
+                // TRANSIENT_ERROR or network failure — retry after delay
                 if (loginAttempt < loginMaxRetries) {
                     showLoadingOverlay('Server busy, retrying (' + (loginAttempt + 1) + '/' + loginMaxRetries + ')...');
-                    await new Promise(function(r) { setTimeout(r, 3000); });
+                    await new Promise(function(r) { setTimeout(r, 2000); });
                 }
             }
         }
@@ -3553,7 +3552,7 @@ async function handleGoogleSignIn(response) {
             tokenExpiresAt = 0;
             if (loginLastError && loginLastError.message === 'AUTH_ERROR') {
                 showLoginError('Access denied. Your Google account (' + email + ') is not authorized to use the Helpdesk Logger. Please contact the administrator.');
-            } else if (loginLastError && (loginLastError.message === 'TRANSIENT_ERROR' || loginLastError.message === 'NON_JSON_RESPONSE')) {
+            } else if (loginLastError && loginLastError.message === 'TRANSIENT_ERROR') {
                 showLoginError('Server is temporarily unavailable. Please try again in a few minutes.');
             } else {
                 showLoginError('Failed to connect to the server. Please try again.');
@@ -3656,29 +3655,29 @@ async function apiGet(action, params = {}, options = {}) {
             signal: controller.signal
         });
         clearTimeout(timeoutId);
-        // Check for non-JSON responses (Google auth redirect or GAS error page)
+        // Check for non-JSON responses (Google auth redirect)
         var contentType = response.headers.get('content-type') || '';
         if (!contentType.includes('application/json') && !contentType.includes('text/javascript')) {
-            // Non-JSON = response delivery failure. The backend MAY have succeeded
-            // (data flushed) but GAS failed to deliver the JSON response.
-            // Use distinct error code so write operations (apiPostWithRetry) do NOT retry,
-            // while read operations (login flow) can safely retry.
-            throw new Error('NON_JSON_RESPONSE');
+            if (!isLoginFlow) {
+                handleSessionExpired();
+            }
+            throw new Error(isLoginFlow ? 'AUTH_ERROR' : 'Session expired');
         }
         var result = await response.json();
-        // Detect transient server errors — server explicitly reports failure, safe to retry
+        // Detect transient server errors — throw specific error for retry handling
         if (result && result.error && result.error.indexOf('TRANSIENT_ERROR') === 0) {
             throw new Error('TRANSIENT_ERROR');
         }
-        // Only "Token expired" should trigger Session Expired (strict match)
         if (result && result.error === 'Token expired') {
             if (!isLoginFlow) {
                 handleSessionExpired();
             }
             throw new Error(isLoginFlow ? 'AUTH_ERROR' : 'Session expired');
         }
-        // "Unauthorized" = genuine auth failure (user not registered, inactive, etc.)
-        if (result && result.error === 'Unauthorized') {
+        if (result && result.error && (result.error.toLowerCase().includes('authorization') || result.error.toLowerCase().includes('auth') || result.error.toLowerCase().includes('permission') || result.error.toLowerCase().includes('login'))) {
+            if (!isLoginFlow) {
+                handleSessionExpired();
+            }
             throw new Error(isLoginFlow ? 'AUTH_ERROR' : 'Session expired');
         }
         return result;
@@ -3712,27 +3711,29 @@ async function apiPost(action, data, params = {}, options = {}) {
             signal: controller.signal
         });
         clearTimeout(timeoutId);
-        // Check for non-JSON responses (Google auth redirect or GAS error page)
+        // Check for non-JSON responses (Google auth redirect)
         var contentType = response.headers.get('content-type') || '';
         if (!contentType.includes('application/json') && !contentType.includes('text/javascript')) {
-            // Non-JSON = response delivery failure. Backend MAY have already succeeded.
-            // Distinct from TRANSIENT_ERROR so apiPostWithRetry won't retry writes.
-            throw new Error('NON_JSON_RESPONSE');
+            if (!isLoginFlow) {
+                handleSessionExpired();
+            }
+            throw new Error(isLoginFlow ? 'AUTH_ERROR' : 'Session expired');
         }
         var result = await response.json();
-        // Detect transient server errors — server explicitly reports failure, safe to retry
+        // Detect transient server errors — throw specific error for retry handling
         if (result && result.error && result.error.indexOf('TRANSIENT_ERROR') === 0) {
             throw new Error('TRANSIENT_ERROR');
         }
-        // Only "Token expired" should trigger Session Expired (strict match)
         if (result && result.error === 'Token expired') {
             if (!isLoginFlow) {
                 handleSessionExpired();
             }
             throw new Error(isLoginFlow ? 'AUTH_ERROR' : 'Session expired');
         }
-        // "Unauthorized" = genuine auth failure (user not registered, inactive, etc.)
-        if (result && result.error === 'Unauthorized') {
+        if (result && result.error && (result.error.toLowerCase().includes('authorization') || result.error.toLowerCase().includes('auth') || result.error.toLowerCase().includes('permission') || result.error.toLowerCase().includes('login'))) {
+            if (!isLoginFlow) {
+                handleSessionExpired();
+            }
             throw new Error(isLoginFlow ? 'AUTH_ERROR' : 'Session expired');
         }
         return result;
@@ -3747,9 +3748,7 @@ async function apiPost(action, data, params = {}, options = {}) {
 
 /**
  * Fix 5: Retry wrapper for apiPost — handles transient GAS service errors.
- * Retries on TRANSIENT_ERROR (server explicitly reported failure) and "Server busy" (lock contention).
- * Does NOT retry NON_JSON_RESPONSE — the backend may have already committed data via flush(),
- * so retrying would create duplicate records (e.g., duplicate addCase rows).
+ * Retries on "Failed to fetch" (CORS/network), TRANSIENT_ERROR responses, and generic server errors.
  * Uses exponential backoff: 1.5s, 3s between retries.
  *
  * @param {string} action - API action name
@@ -3771,7 +3770,6 @@ async function apiPostWithRetry(action, data, params, options, maxRetries) {
             var result = await apiPost(action, data, params, options);
 
             // Check if the server returned a TRANSIENT_ERROR (from doGet's top-level catch)
-            // This means the server caught an error BEFORE writing — safe to retry.
             if (result && !result.success && result.error && result.error.indexOf('TRANSIENT_ERROR') !== -1) {
                 lastResult = result;
                 if (attempt < maxRetries) {
@@ -3783,7 +3781,7 @@ async function apiPostWithRetry(action, data, params, options, maxRetries) {
                 return result;
             }
 
-            // Also retry on "Server busy" lock contention errors (write hasn't started)
+            // Also retry on "Server busy" lock contention errors
             if (result && !result.success && result.error && result.error.indexOf('Server busy') !== -1) {
                 lastResult = result;
                 if (attempt < maxRetries) {
@@ -3798,14 +3796,7 @@ async function apiPostWithRetry(action, data, params, options, maxRetries) {
         } catch (err) {
             lastError = err;
 
-            // NON_JSON_RESPONSE = response delivery failure AFTER the backend may have
-            // already committed data (flush). Do NOT retry — would create duplicates.
-            // Show a warning instead of an error since the operation likely succeeded.
-            if (err.message === 'NON_JSON_RESPONSE') {
-                throw new Error('The operation may have completed but the server response was lost. Please refresh your data to verify.');
-            }
-
-            // Determine if the error is retryable (only errors where write definitely didn't happen)
+            // Determine if the error is retryable
             var isRetryable = (
                 err.message === 'Failed to fetch' ||
                 err.message.indexOf('TRANSIENT_ERROR') !== -1 ||
@@ -3919,9 +3910,8 @@ async function loadUsersFromAPI(retryCount = 0) {
             if (!isLoginFlow) showToast('Failed to load users: ' + result.error, 'error');
         }
     } catch (error) {
-        // During login flow, bubble up auth, transient, and non-JSON errors immediately
-        // so the outer login retry loop can handle them
-        if (isLoginFlow && (error.message === 'AUTH_ERROR' || error.message === 'TRANSIENT_ERROR' || error.message === 'NON_JSON_RESPONSE')) {
+        // During login flow, bubble up auth and transient errors immediately
+        if (isLoginFlow && (error.message === 'AUTH_ERROR' || error.message === 'TRANSIENT_ERROR')) {
             throw error;
         }
         // Retry once on network failure (common in iframe environments)
@@ -3944,9 +3934,8 @@ async function loadWorksheetsFromAPI(retryCount = 0) {
             console.error('Failed to load worksheets:', result.error);
         }
     } catch (error) {
-        // During login flow, bubble up auth, transient, and non-JSON errors immediately
-        // so the outer login retry loop can handle them
-        if (isLoginFlow && (error.message === 'AUTH_ERROR' || error.message === 'TRANSIENT_ERROR' || error.message === 'NON_JSON_RESPONSE')) {
+        // During login flow, bubble up auth and transient errors immediately
+        if (isLoginFlow && (error.message === 'AUTH_ERROR' || error.message === 'TRANSIENT_ERROR')) {
             throw error;
         }
         // Retry once on network failure (common in iframe environments)
@@ -4318,20 +4307,17 @@ function getWorksheetsToLoad() {
 }
 
 /**
- * Calculate initial date range
- * Admin/supervisor: Last 7 days (faster load for 9+ worksheets)
- * Regular user: Last 30 days
+ * Calculate initial date range (Last 30 days)
  * @returns {Object} { startDate, endDate } in YYYY-MM-DD format
  */
 function getInitialDateRange() {
     var now = new Date();
-    var daysBack = isAdmin ? 7 : 30;
-    var startDate = new Date(now);
-    startDate.setDate(startDate.getDate() - daysBack);
+    var thirtyDaysAgo = new Date(now);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     // Use shared formatLocalDate helper (single source of truth for date formatting)
     return {
-        startDate: formatLocalDate(startDate),
+        startDate: formatLocalDate(thirtyDaysAgo),
         endDate: formatLocalDate(now)
     };
 }
@@ -4421,33 +4407,20 @@ async function loginAs(email) {
     }
 
     // Load cases using unified function - same logic for both admin and non-admin
-    // Initial load: Admin = Last 7 days (faster), Regular = Last 30 days
+    // Initial load: Last 30 days for all users using QUERY method
     const dateRange = getInitialDateRange();
     const worksheetsToLoad = getWorksheetsToLoad();
-
-    // Set period button text to match initial range
-    var initialPeriodKey = isAdmin ? '7days' : '30days';
-    var initialPeriodText = getPresetDisplayText(initialPeriodKey);
-    var periodButtonText = document.getElementById('periodButtonText');
-    if (periodButtonText) periodButtonText.textContent = initialPeriodText;
-    var adminPeriodButtonText = document.getElementById('adminPeriodButtonText');
-    if (adminPeriodButtonText) adminPeriodButtonText.textContent = initialPeriodText;
-    var dateFilterInput = document.getElementById('dateFilter');
-    if (dateFilterInput) dateFilterInput.value = initialPeriodKey;
-    var adminPeriodFilterInput = document.getElementById('adminPeriodFilter');
-    if (adminPeriodFilterInput) adminPeriodFilterInput.value = initialPeriodKey;
 
     await ensureDataLoaded(dateRange.startDate, dateRange.endDate, 'Loading cases...');
     cases = adminCases; // ensureDataLoaded updates adminCases
     adminCacheTimestamp = Date.now();
-    adminCachePeriod = initialPeriodKey;
+    adminCachePeriod = '30days';
 
     // Update the data loaded range display
     updateDataLoadedRange();
 
     setCurrentDateTime(); applyFilters(); updateStats();
-    var userModalEl = document.getElementById('userSelectModal');
-    if (userModalEl) userModalEl.classList.remove('show');
+    document.getElementById('userSelectModal').classList.remove('show');
     // Restore form state if returning from session expiry (must be after setCurrentDateTime)
     if (savedFormState) {
         showView('newCase', true);
@@ -4670,15 +4643,11 @@ function performLogoutReset() {
     var adminSearchInput = document.getElementById('adminSearchInput');
     if (adminSearchInput) adminSearchInput.value = '';
 
-    // Reset period buttons text to default (will be set correctly on next login)
+    // Reset period buttons text
     var periodButtonText = document.getElementById('periodButtonText');
     if (periodButtonText) periodButtonText.textContent = 'Last 30 Days';
     var adminPeriodButtonText = document.getElementById('adminPeriodButtonText');
     if (adminPeriodButtonText) adminPeriodButtonText.textContent = 'Last 30 Days';
-    var dateFilterInput = document.getElementById('dateFilter');
-    if (dateFilterInput) dateFilterInput.value = '30days';
-    var adminPeriodFilterInput = document.getElementById('adminPeriodFilter');
-    if (adminPeriodFilterInput) adminPeriodFilterInput.value = '30days';
 
     // Reset colleague filter dropdown
     var dashboardColleagueFilter = document.getElementById('dashboardColleagueFilter');
@@ -7618,7 +7587,6 @@ async function saveCase(event) {
     if (agentCodeVal && agentCodeVal.length < 6) {
         showToast('Agent Code must be at least 6 characters', 'error');
         document.getElementById('agentCode').focus();
-        resetSaveBtn();
         return;
     }
 
@@ -8123,13 +8091,9 @@ function confirmDeleteCase() {
 async function deleteCase(jobId, deleteAll) {
     showLoadingOverlay('Deleting...');
     try {
-        // Use apiGet() instead of raw fetch() — gets proper timeout, AbortController,
-        // and NON_JSON_RESPONSE handling (prevents browser/network retry issues)
-        const result = await apiGet('deleteCase', {
-            worksheet: currentUser.worksheet,
-            jobId: jobId,
-            deleteAll: String(deleteAll)
-        });
+        const url = `${API_URL}?token=${encodeURIComponent(googleCredential)}&action=deleteCase&worksheet=${encodeURIComponent(currentUser.worksheet)}&jobId=${encodeURIComponent(jobId)}&deleteAll=${deleteAll}`;
+        const response = await fetch(url, { referrerPolicy: 'no-referrer', cache: 'no-store' });
+        const result = await response.json();
 
         if (result.success) {
             showToast(result.message || 'Case deleted successfully', 'success');
@@ -8144,17 +8108,7 @@ async function deleteCase(jobId, deleteAll) {
         }
     } catch (err) {
         hideLoadingOverlay();
-        if (err.message === 'NON_JSON_RESPONSE') {
-            // Backend may have already deleted the row — don't show a scary error
-            showToast('Delete may have completed. Please refresh your data to verify.', 'warning');
-            dataChanged = true;
-            showView('dashboard');
-        } else if (err.message === 'REQUEST_TIMEOUT') {
-            showToast('Delete request timed out. Please check your data and try again if needed.', 'warning');
-            dataChanged = true;
-        } else if (err.message !== 'Session expired') {
-            showToast('Error deleting case: ' + err.message, 'error');
-        }
+        showToast('Error deleting case: ' + err.message, 'error');
     }
 }
 
